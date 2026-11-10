@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Super Neurona</title>
+<!--
+  =====================================================================
+  VIDEOJUEGO DE REPASO · SUPER NEURONA
+  Componentes, características del entrenamiento, MLP y CNN
+  Máquinas de Aprendizaje
+  Archivo único (HTML + CSS + JS + canvas + Web Audio).
+  Listo para Google Sites: Insertar › Código embebido › pegar todo.
+  Personaje original (Nura). No usa arte ni marcas de Nintendo.
+  Las opciones se barajan y, dentro de cada caja, tienen un largo parecido.
+  =====================================================================
+-->
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b1020; --panel: #131b36; --panel2: #1b2550; --line: #2a3770;
+    --txt: #e8ecff; --mut: #9aa6d6;
+    --cyan: #8FBC6A; --violet: #70AD47; --green: #A9D18E; --red: #fb7185; --yellow: #fbbf24; --pink: #C5E0B4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: 'Nunito', system-ui, sans-serif; color: var(--txt);
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(167,139,250,.25), transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, rgba(34,211,238,.20), transparent 60%),
+      var(--bg);
+    overflow-x: hidden;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .fred { font-family: 'Fredoka', 'Nunito', sans-serif; }
+  #app { position: relative; z-index: 1; max-width: 980px; margin: 0 auto; padding: 16px; min-height: 100vh; display: flex; flex-direction: column; }
+  .screen { display: none; flex: 1; flex-direction: column; animation: pop .35s ease; }
+  .screen.active { display: flex; }
+  @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+  .panel { background: linear-gradient(180deg, var(--panel2), var(--panel)); border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  .btn { font-family: 'Fredoka', sans-serif; font-weight: 600; border: 0; border-radius: 16px; cursor: pointer; transition: transform .1s, box-shadow .1s, filter .15s; color: #0b1020; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: translateY(3px); }
+  .btn:focus-visible, .opt:focus-visible, .avatar:focus-visible, input:focus-visible, #view:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3px; }
+  .btn-main { background: linear-gradient(90deg, var(--cyan), var(--violet)); box-shadow: 0 6px 0 #5b4bb8; font-size: 1.35rem; padding: 14px 28px; }
+  .btn-main:active { box-shadow: 0 3px 0 #5b4bb8; }
+  .btn-sec { background: #2a3770; color: var(--txt); box-shadow: 0 5px 0 #1a234a; padding: 10px 18px; font-size: 1rem; }
+  .btn-sec:active { box-shadow: 0 2px 0 #1a234a; }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; }
+  .title { font-size: clamp(2rem, 6vw, 3.4rem); line-height: 1.05; background: linear-gradient(90deg, var(--cyan), var(--violet), var(--pink)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .avatars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .avatar { background: #1a234a; border: 2px solid var(--line); border-radius: 18px; padding: 8px 0 10px; cursor: pointer; }
+  .avatar[aria-pressed="true"] { border-color: var(--cyan); background: rgba(34,211,238,.15); box-shadow: 0 0 0 4px rgba(34,211,238,.18); }
+  .mini { width: 54px; height: 62px; margin: 0 auto; position: relative; }
+  .mini i { position: absolute; display: block; }
+  .inp { width: 100%; font-size: 1.15rem; padding: 12px 16px; border-radius: 14px; border: 2px solid var(--line); background: #0f1630; color: var(--txt); font-family: 'Nunito', sans-serif; font-weight: 700; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-weight: 800; font-size: .85rem; background: #1a234a; border: 1px solid var(--line); }
+  .hud { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+  .hearts { font-size: 1.25rem; letter-spacing: 1px; }
+  .heart-lost { filter: grayscale(1); opacity: .35; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .opts { grid-template-columns: 1fr; } }
+  .opt { position: relative; display: flex; align-items: center; gap: 12px; text-align: left; border: 0; border-radius: 18px; padding: 14px; min-height: 72px; color: #fff; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 1rem; cursor: pointer; box-shadow: 0 6px 0 rgba(0,0,0,.35); }
+  .opt:hover:not([disabled]) { transform: translateY(-2px); filter: brightness(1.08); }
+  .opt .key { position: absolute; top: 6px; right: 10px; font-size: .75rem; opacity: .8; }
+  .o0 { background: #e0435c; } .o1 { background: #2f6fe4; } .o2 { background: #d9a300; } .o3 { background: #1f9d55; }
+  .opt[disabled] { cursor: default; }
+  .opt.dim { opacity: .28; }
+  .opt.gone { visibility: hidden; }
+  .opt.right { outline: 4px solid #fff; }
+  .opt.wrong { animation: shake .4s; filter: grayscale(.55); }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+  #view { width: 100%; height: auto; display: block; border-radius: 18px; background: #6ec6ff; touch-action: none; }
+  #modal { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(5,8,20,.72); }
+  #modal.show { display: flex; }
+  #modal .panel { max-width: 720px; width: 100%; max-height: calc(100vh - 32px); overflow: auto; animation: pop .25s ease; }
+  .stat { background: #0f1630; border: 1px solid var(--line); border-radius: 16px; padding: 12px; text-align: center; }
+  .stat b { display: block; font-family: 'Fredoka', sans-serif; font-size: 1.5rem; color: var(--cyan); }
+  .muted { color: var(--mut); }
+  .review li { border-left: 4px solid var(--red); background: #0f1630; border-radius: 10px; padding: 10px 12px; margin-top: 8px; list-style: none; }
+  .pad { display: none; gap: 10px; margin-top: 10px; }
+  .pad button { flex: 1; font-family: 'Fredoka', sans-serif; font-size: 1.3rem; border: 0; border-radius: 16px; padding: 14px 0; background: #2a3770; color: white; box-shadow: 0 5px 0 #1a234a; }
+  @media (pointer: coarse) { .pad { display: flex; } }
+  #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 50; background: var(--green); color: #06281d; font-weight: 800; padding: 10px 16px; border-radius: 12px; display: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <section id="sStart" class="screen active" aria-labelledby="tStart">
+    <div class="panel" style="padding:26px; margin:auto 0;">
+      <p style="margin:0 0 12px;"><a href="index.html" class="btn btn-sec" style="display:inline-block; text-decoration:none;">Volver a la guía</a></p>
+      <p class="chip" style="color:var(--cyan)">Juego de repaso · Máquinas de Aprendizaje</p>
+      <h1 id="tStart" class="fred title" style="margin:14px 0 6px;">Super Neurona</h1>
+      <p class="muted" style="font-size:1.08rem; margin:0 0 18px;">Nura corre, salta y golpea las cajas. De cada caja sale una pregunta sobre la neurona, el entrenamiento, el perceptrón o la CNN. Si aciertas, se abre el camino. Si fallas, el puente no aparece.</p>
+      <p class="fred" style="font-size:1.1rem; margin:0 0 8px;">1 · Elige la gorra de Nura</p>
+      <div class="avatars" id="avatars" role="group" aria-label="Gorras"></div>
+      <label class="fred" for="nameIn" style="display:block; font-size:1.1rem; margin:18px 0 8px;">2 · Tu nombre</label>
+      <input id="nameIn" class="inp" maxlength="18" placeholder="Ej.: Valeria" autocomplete="off">
+      <p id="nameErr" style="color:var(--red); font-weight:800; min-height:22px; margin:6px 0 0;"></p>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin:8px 0 18px;">
+        <div class="stat"><b>4 mundos</b><span class="muted">componentes, entrenamiento, MLP y CNN</span></div>
+        <div class="stat"><b>16 cajas</b><span class="muted">cada acierto construye un puente</span></div>
+        <div class="stat"><b>4 vidas</b><span class="muted">los errores caminan: salta encima</span></div>
+      </div>
+      <button id="btnStart" class="btn btn-main" style="width:100%;">Empezar la carrera</button>
+      <p class="muted" style="text-align:center; font-size:.9rem; margin:12px 0 0;">Flechas o A D para correr · Espacio, W o flecha arriba para saltar · 1 a 4 para responder</p>
+    </div>
+  </section>
+
+  <section id="sLevel" class="screen" aria-live="polite">
+    <div class="panel" style="padding:30px; margin:auto 0; text-align:center;">
+      <div id="lvEmoji" class="fred" style="font-size:4.2rem;"></div>
+      <p id="lvNum" class="chip" style="margin-top:8px; color:var(--yellow)"></p>
+      <h2 id="lvName" class="fred title" style="margin:12px 0 8px;"></h2>
+      <p id="lvDesc" class="muted" style="font-size:1.1rem; max-width:540px; margin:0 auto 22px;"></p>
+      <button id="btnGo" class="btn btn-main">A correr</button>
+    </div>
+  </section>
+
+  <section id="sPlay" class="screen">
+    <div class="panel" style="padding:10px 12px;">
+      <div class="hud">
+        <span class="chip"><span id="hName"></span></span>
+        <span id="hWorld" class="chip" style="color:var(--violet)"></span>
+        <span class="chip" style="color:var(--yellow)">Monedas <span id="hCoins">0</span></span>
+        <span class="chip" style="color:var(--cyan)">Puntos <span id="hScore">0</span></span>
+        <span id="hHearts" class="hearts" aria-label="Vidas"></span>
+        <button id="btnMute" class="btn btn-sec" style="padding:6px 12px;" aria-label="Silenciar">Sonido</button>
+      </div>
+    </div>
+    <div class="panel" style="padding:10px; margin-top:10px;">
+      <canvas id="view" width="960" height="480" tabindex="0" aria-label="Mundo de plataformas. Nura corre hacia la derecha. Golpea las cajas desde abajo."></canvas>
+      <div class="pad" aria-hidden="true">
+        <button id="bLeft" type="button">◀</button>
+        <button id="bJump" type="button">Saltar</button>
+        <button id="bRight" type="button">▶</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="sEnd" class="screen" aria-labelledby="eTitle">
+    <div class="panel" style="padding:26px; margin:auto 0; text-align:center;">
+      <p id="eTop" class="chip" style="color:var(--yellow)"></p>
+      <h2 id="eTitle" class="fred title" style="margin:12px 0 8px;"></h2>
+      <p id="eSub" class="fred" style="font-size:1.25rem; margin:0 0 16px;"></p>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px;">
+        <div class="stat"><b id="eScore"></b><span class="muted">Puntos</span></div>
+        <div class="stat"><b id="eHits"></b><span class="muted">Cajas</span></div>
+        <div class="stat"><b id="eCoins"></b><span class="muted">Monedas</span></div>
+        <div class="stat"><b id="eWorld"></b><span class="muted">Mundo</span></div>
+      </div>
+      <div id="eReview" style="text-align:left; margin-top:18px;"></div>
+      <div style="display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-top:20px;">
+        <button id="btnAgain" class="btn btn-main">Jugar otra vez</button>
+        <button id="btnCopy" class="btn btn-sec">Copiar resultado</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="mHead">
+  <div class="panel" style="padding:22px;">
+    <p id="mKicker" class="chip" style="color:var(--yellow)"></p>
+    <h3 id="mHead" class="fred" style="font-size:1.35rem; line-height:1.25; margin:12px 0;"></h3>
+    <div id="opts" class="opts"></div>
+    <div id="mWhyBox" style="display:none; margin-top:14px; background:#0f1630; border:1px solid var(--line); border-radius:16px; padding:14px;">
+      <p id="mWhyTitle" class="fred" style="color:var(--yellow); margin:0;"></p>
+      <p id="mWhy" style="margin:6px 0 0; line-height:1.45;"></p>
+    </div>
+    <button id="btnNext" class="btn btn-main" style="width:100%; margin-top:16px; display:none;">Continuar</button>
+  </div>
+</div>
+<div id="toast" role="status">Resultado copiado</div>
+
+<script>
+const $ = s => document.querySelector(s);
+
+const WORLDS = [
+  { name: 'Mundo 1 · Componentes', emoji: '1', desc: 'Sesgo, forward, backpropagation, la tasa y la pérdida. Golpea cada caja desde abajo.' },
+  { name: 'Mundo 2 · Características', emoji: '2', desc: 'Memoria, gradiente que se apaga, batch norm, dropout y el optimizador.' },
+  { name: 'Mundo 3 · Perceptrón', emoji: '3', desc: 'Aplanar la foto, el costo de los pesos y la capa que pone el nombre.' },
+  { name: 'Mundo 4 · Convolución', emoji: '4', desc: 'El kernel, el tamaño de la salida, los canales y la prenda que se corre.' }
+];
+
+const Q = [
+  { q: 'Una neurona calcula z = Wx + b y después aplica una activación. ¿Qué aporta el sesgo b?',
+    o: ['Desplaza la recta, de modo que la neurona no tiene que pasar por el origen.', 'Multiplica cada entrada por un peso distinto antes de sumar toda la capa.', 'Apaga esa neurona al azar en cada paso para que la red no llegue a memorizar.', 'Convierte la suma en una probabilidad que, junto con las demás, llega a uno.'],
+    a: 0,
+    hint: 'Sin b, la recta está clavada al origen. El sesgo no es un peso de una entrada ni una probabilidad.',
+    why: 'b se suma después del producto Wx. Por eso la neurona puede activarse aunque todas las entradas valgan cero.' },
+  { q: 'En una pasada de entrenamiento, ¿qué hace el forward y qué hace el backpropagation?',
+    o: ['El forward arma la predicción y el backpropagation reparte el error hacia atrás.', 'El forward corrige los pesos y el backpropagation solo calcula la predicción final.', 'Los dos recorren la red hacia adelante y dejan los pesos exactamente como estaban.', 'El forward elige la tasa de aprendizaje y el backpropagation elige el tamaño del lote.'],
+    a: 0,
+    hint: 'Primero se predice. El error se reparte después, de la salida hacia la entrada.',
+    why: 'El forward usa los pesos actuales. El backpropagation aplica la regla de la cadena y dice cuánto corregir cada peso.' },
+  { q: 'La actualización es theta menos alfa por el gradiente. Si alfa es enorme, ¿qué ocurre?',
+    o: ['El paso se sale del valle y el entrenamiento deja de acercarse a un mínimo.', 'La red siempre llega más lejos, porque el primer paso ya avanza mucho más.', 'Solo cambia la memoria: una tasa grande cabe en una tarjeta más pequeña.', 'La pérdida baja más despacio, pero termina en el mismo valle que una tasa chica.'],
+    a: 0,
+    hint: 'Hay un rango. Por debajo se gastan épocas. Por encima el paso se va del valle.',
+    why: 'Una tasa enorme puede verse rápida al principio y después romper el entrenamiento. La memoria limita el lote, no alfa.' },
+  { q: '¿Para qué está la función de pérdida en el entrenamiento?',
+    o: ['Mide la distancia entre la predicción y el dato, y de ahí sale el gradiente.', 'Elige sola cuántas capas ocultas tendrá la red antes de empezar a entrenar.', 'Reemplaza a la activación, así que ya no hacen falta ReLU ni la sigmoide.', 'Cuenta los parámetros y los deja fijos durante todas las épocas del entrenamiento.'],
+    a: 0,
+    hint: 'Sin una medida del error no hay gradiente, y sin gradiente los pesos no saben hacia dónde moverse.',
+    why: 'La pérdida compara predicción y dato. Su derivada, de atrás hacia adelante, es lo que corrige cada peso.' },
+  { q: 'Sin regularizar, el entrenamiento sigue bajando y la validación se estanca. ¿Qué es esa brecha?',
+    o: ['La red está memorizando: el entrenamiento baja y la validación ya no acompaña.', 'La tasa quedó chica: esa brecha solo aparece cuando el paso no alcanza a moverse.', 'Es el pooling: encoger los mapas siempre baja la exactitud del conjunto de validación.', 'Es el softmax: las probabilidades de las clases dejaron de sumar exactamente uno.'],
+    a: 0,
+    hint: 'Las dos curvas se leen juntas. Que el entrenamiento mejore no arrastra a la validación.',
+    why: 'Esa brecha es sobreajuste. Dropout la achica. Batch norm acelera, y no reemplaza esa regularización.' },
+  { q: 'Una red honda con sigmoide deja casi en cero el gradiente de las primeras capas. ¿Qué lo evita?',
+    o: ['ReLU en las capas ocultas y la inicialización de He mantienen la señal viva.', 'Hay que subir la tasa hasta que la sigmoide recupere el gradiente de la primera capa.', 'Hay que quitar el sesgo de cada neurona y dejar únicamente los pesos de la capa.', 'Hay que usar un lote de un solo ejemplo, porque así el gradiente no puede apagarse.'],
+    a: 0,
+    hint: 'La derivada de la sigmoide vale como máximo 0.25. Muchos factores menores que 1 apagan el gradiente.',
+    why: 'Del lado positivo, la derivada de ReLU vale 1. He compensa que ReLU apaga la mitad de las activaciones.' },
+  { q: 'Batch norm y dropout no hacen el mismo trabajo. ¿Cómo se distinguen?',
+    o: ['Batch norm estabiliza la escala y dropout achica la brecha entre entrenar y validar.', 'Los dos apagan neuronas al azar, así que con usar uno de ellos el otro ya sobra.', 'Batch norm elige la tasa y dropout elige cuántos canales tendrá la convolución.', 'Los dos sustituyen a la pérdida, así que la red ya puede entrenar sin un gradiente.'],
+    a: 0,
+    hint: 'Uno reescala lo que entra a la capa siguiente. El otro apaga neuronas solo mientras se entrena.',
+    why: 'Un orden que funciona es convolución o capa lineal, batch norm, activación y, si la brecha aparece, dropout.' },
+  { q: 'La red se entrena por primera vez esta semana. ¿Con qué optimizador conviene arrancar?',
+    o: ['Conviene Adam o AdamW, y la tasa de SGD no se copia porque cada uno tiene su escala.', 'Hay que correr Adam y SGD con la misma tasa, porque si no la comparación no es justa.', 'Conviene solo AdaGrad, porque su paso no se vuelve cero en un entrenamiento largo.', 'Conviene RMSprop sin validación, porque el segundo momento ya regulariza la red.'],
+    a: 0,
+    hint: 'Adam junta la idea de momentum y la de RMSprop. AdaGrad, en un entrenamiento largo, se apaga.',
+    why: 'Adam o AdamW son el punto de partida. Si no converge, el siguiente intento es SGD con momentum y un calendario de la tasa.' },
+  { q: 'Una foto de 28 por 28 entra a una capa densa. ¿Qué se pierde al aplanarla a 784 números?',
+    o: ['Se pierde la vecindad: dos píxeles que se tocaban pueden quedar lejos en el vector.', 'Se pierde el color, porque una capa densa solo acepta fotos de un único canal.', 'Se pierde el sesgo, porque al estirar la foto la neurona ya no puede sumar b.', 'Se pierde la pérdida, porque el vector de 784 números ya es la predicción final.'],
+    a: 0,
+    hint: 'El estirado guarda los valores, no el mapa de quién está al lado de quién.',
+    why: 'Una capa densa pone un peso distinto a cada número del vector. Por eso ya no sabe qué píxeles eran vecinos.' },
+  { q: 'Una foto de 1 000 por 1 000 entra a 1 000 neuronas ocultas. ¿Por qué el costo se dispara?',
+    o: ['Harían falta del orden de mil millones de pesos, uno por cada píxel y cada neurona.', 'Porque la MLP pone un kernel 5 por 5 distinto en cada posición de esa fotografía.', 'Porque softmax asigna una probabilidad distinta a cada píxel de la imagen.', 'Porque un pooling de 2 por 2 duplica el alto y el ancho antes de la capa oculta.'],
+    a: 0,
+    hint: 'En una capa densa, cada píxel se conecta con cada neurona. No hay un kernel compartido.',
+    why: '1 000 por 1 000 píxeles por 1 000 neuronas es del orden de 10 a la 9. Compartir un kernel chico baja esa cuenta.' },
+  { q: 'Los mapas de rasgos ya están listos. ¿Qué pieza pone el nombre de la clase?',
+    o: ['Se aplana el último mapa y una capa densa, con softmax, es la que pone el nombre.', 'Hace falta otra convolución sin sesgo, porque la capa densa no clasifica imágenes.', 'Basta el pooling: el máximo de la última ventana ya es la clase de la foto.', 'Basta una ReLU sobre la foto original, sin pesos y sin ninguna capa oculta.'],
+    a: 0,
+    hint: 'La convolución y el pooling aprenden rasgos. Clasificar es el trabajo de la capa densa.',
+    why: 'Aplanar convierte el último mapa en un vector. La capa densa vota y softmax convierte esos votos en probabilidades que suman 1.' },
+  { q: 'En el perceptrón, ¿en qué dirección corrige los pesos el backpropagation?',
+    o: ['Empieza en el error de la última capa y camina hacia atrás, una capa a la vez.', 'Empieza en la foto de entrada y empuja el error hasta la última capa de la red.', 'Corrige solo el sesgo de la primera neurona y deja quietos todos los demás pesos.', 'Reparte el mismo gradiente a todas las capas, sin usar la regla de la cadena.'],
+    a: 0,
+    hint: 'El error se conoce en la salida. Hay que llevarlo hasta los pesos que armaron la predicción.',
+    why: 'La regla de la cadena multiplica derivadas desde la última capa hasta la primera. En cada capa se corrigen los pesos.' },
+  { q: 'La entrada es 0 1 2 / 3 4 5 / 6 7 8 y el kernel es 0 1 / 2 3. ¿Cuánto vale la primera celda?',
+    o: ['La primera celda vale 19: es 0 por 0, más 1 por 1, más 3 por 2, más 4 por 3.', 'La primera celda vale 8: el kernel se voltea y solo entra la diagonal de la foto.', 'La primera celda vale 36: cada píxel de la entrada se multiplica por cada peso.', 'La primera celda vale 4: la salida copia el último peso y no mira la ventana.'],
+    a: 0,
+    hint: 'La ventana de arriba a la izquierda usa 0, 1, 3 y 4. El kernel no se voltea antes de multiplicar.',
+    why: '0 por 0 + 1 por 1 + 3 por 2 + 4 por 3 = 19. Las otras tres posiciones dan 25, 37 y 43. Esa cuenta es una correlación cruzada.' },
+  { q: 'Entrada de lado 8, kernel 3, relleno 1 por lado y salto 2. ¿Qué lado tiene la salida?',
+    o: ['El lado queda en 4: piso de (8 + 2 menos 3) partido 2, y a ese resultado se le suma 1.', 'El lado sigue en 8: un relleno same conserva el tamaño aunque el salto de la ventana sea 2.', 'El lado queda en 3: piso de (8 menos 3) partido 2, más 1, porque el relleno no se suma.', 'El lado queda en 16: el salto 2 duplica el lado y el relleno lo vuelve a duplicar.'],
+    a: 0,
+    hint: 'El relleno entra como 2p. El salto divide. El piso descarta la posición donde el kernel ya no cabe.',
+    why: 'piso((8 + 2 por 1 menos 3) / 2) + 1 = 4. Con salto 1 y el relleno justo, el lado se conservaría. Aquí el salto es 2.' },
+  { q: 'Una convolución pasa de 3 canales a 64, con kernel 3 por 3 y sesgo. ¿Cuántos parámetros tiene?',
+    o: ['Son 1 792: 64 por (3 por 3 por 3 + 1), y el número no crece si la foto es más grande.', 'Son 64 por 3 por el alto por el ancho, porque cada píxel de la imagen lleva su peso.', 'Son solo 9: la capa entera comparte un único kernel de tres por tres, sin sesgo.', 'Son 192: 64 filtros por 3 canales, y el sesgo de cada filtro queda fuera de la cuenta.'],
+    a: 0,
+    hint: 'Hay un kernel por cada canal de salida y cada canal de entrada, más un sesgo por filtro.',
+    why: '64 por (3 por 9 + 1) = 1 792. El mismo kernel recorre toda la foto, así que el alto y el ancho no entran en la cuenta.' },
+  { q: 'Una foto nueva trae la prenda un poco corrida. ¿Qué pieza de la CNN aguanta ese desplazamiento?',
+    o: ['El kernel compartido y el max pooling conservan el rasgo aunque la prenda se corra un poco.', 'Hay que aplanar la foto para que la capa densa memorice la columna exacta de la prenda.', 'Conviene quitar el relleno: así el borde no pesa y el corrimiento deja de mover el rasgo.', 'Conviene subir la tasa: un paso más grande devuelve la prenda a la columna del entrenamiento.'],
+    a: 0,
+    hint: 'El mismo detector sirve en cualquier columna. El máximo tolera que el rasgo se mueva dentro de la ventana.',
+    why: 'Los pesos compartidos dan invarianza a la traslación. El max pooling conserva el rasgo si se mueve dentro de su ventana.' }
+];
+
+
+const CAPS = ['#70AD47', '#385723', '#fbbf24', '#38bdf8'];
+const GY = 392, P_H = 42, PW = 28, MAXLIVES = 4;
+const GRAV = 1500, JUMP = -640, MOVE = 240;
+
+let cap = CAPS[0], muted = false, actx = null;
+let mode = 'start', world = null, wi = 0;
+let player, camX = 0, paused = false, lockQ = false;
+let score = 0, coins = 0, lives = MAXLIVES, hits = 0, fails = [], name = 'Nura';
+let shake = 0, last = 0, runT = 0, asked = null, order = [], correctPos = -1;
+const keys = {};
+const canvas = $('#view'), ctx = canvas.getContext('2d');
+
+function audio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } }
+  if (actx && actx.state === 'suspended') actx.resume();
+  return actx;
+}
+function tone(freq, dur, type, when, gain, slide) {
+  const c = audio(); if (!c || muted) return;
+  const t = c.currentTime + (when || 0), o = c.createOscillator(), g = c.createGain();
+  o.type = type || 'square'; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain || 0.08, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+const SFX = {
+  jump: () => tone(420, 0.12, 'square', 0, 0.06, 720),
+  coin: () => { tone(880, 0.08, 'square', 0, 0.06); tone(1320, 0.1, 'square', 0.08, 0.05); },
+  bump: () => tone(180, 0.08, 'square', 0, 0.05),
+  stomp: () => tone(220, 0.12, 'square', 0, 0.07, 90),
+  ok: () => { [523, 659, 784].forEach((f, i) => tone(f, 0.12, 'square', i * 0.07, 0.07)); },
+  bad: () => tone(240, 0.28, 'sawtooth', 0, 0.06, 90),
+  flag: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.14, 'square', i * 0.09, 0.07)); },
+  over: () => { [392, 330, 262, 196].forEach((f, i) => tone(f, 0.22, 'triangle', i * 0.12, 0.08)); }
+};
+
+function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id)); }
+function mini(color) {
+  return '<div class="mini" aria-hidden="true">' +
+    '<i style="left:8px;top:0;width:38px;height:16px;background:' + color + ';border-radius:8px 8px 2px 2px"></i>' +
+    '<i style="left:6px;top:12px;width:22px;height:6px;background:' + color + ';border-radius:2px"></i>' +
+    '<i style="left:14px;top:16px;width:26px;height:22px;background:#f6c7a1;border-radius:8px"></i>' +
+    '<i style="left:12px;top:38px;width:30px;height:18px;background:#0f766e;border-radius:6px"></i></div>';
+}
+$('#avatars').innerHTML = CAPS.map((c, i) => '<button class="avatar" aria-pressed="' + (i === 0) + '" aria-label="Gorra ' + (i + 1) + '" data-c="' + c + '">' + mini(c) + '</button>').join('');
+document.querySelectorAll('.avatar').forEach(b => b.addEventListener('click', () => {
+  cap = b.dataset.c; SFX.bump();
+  document.querySelectorAll('.avatar').forEach(x => x.setAttribute('aria-pressed', x === b));
+}));
+
+function makeLevel(i) {
+  const base = i * 4;
+  const spec = [
+    { grounds: [[0, 760], [980, 620], [1820, 620], [2660, 520], [3400, 420]],
+      blocks: [[520, 0, 760], [1280, 1, 1600], [2140, 2, 2440], [2920, 3, 3180]],
+      gaps: [[760, 220], [1600, 220], [2440, 220], [3180, 220]],
+      enemies: [[1100, 1000, 1500], [1960, 1840, 2360], [2740, 2680, 3100]],
+      coins: [180, 300, 360, 430, 1040, 1160, 1400, 1900, 2060, 2580, 2780, 3300],
+      flag: 3680, length: 3900 },
+    { grounds: [[0, 760], [980, 620], [1820, 620], [2660, 520], [3400, 420]],
+      blocks: [[520, 4, 760], [1280, 5, 1600], [2140, 6, 2440], [2920, 7, 3180]],
+      gaps: [[760, 220], [1600, 220], [2440, 220], [3180, 220]],
+      enemies: [[1080, 1000, 1520], [2000, 1840, 2380], [2780, 2680, 3120]],
+      coins: [200, 340, 1000, 1200, 1480, 1900, 2100, 2540, 2860, 3320],
+      flag: 3680, length: 3900 },
+    { grounds: [[0, 760], [980, 620], [1820, 620], [2660, 520], [3400, 560]],
+      blocks: [[520, 8, 760], [1280, 9, 1600], [2140, 10, 2440], [2920, 11, 3180]],
+      gaps: [[760, 220], [1600, 220], [2440, 220], [3180, 220]],
+      enemies: [[1120, 1000, 1540], [1980, 1840, 2360], [2760, 2680, 3080], [3520, 3420, 3860]],
+      coins: [220, 380, 1060, 1340, 1700, 1980, 2300, 2600, 3000, 3480],
+      flag: 3820, length: 4040 },
+    { grounds: [[0, 760], [980, 620], [1820, 620], [2660, 520], [3400, 560]],
+      blocks: [[520, 12, 760], [1280, 13, 1600], [2140, 14, 2440], [2920, 15, 3180]],
+      gaps: [[760, 220], [1600, 220], [2440, 220], [3180, 220]],
+      enemies: [[1100, 1000, 1500], [1960, 1840, 2360], [2760, 2680, 3080], [3520, 3420, 3860]],
+      coins: [200, 360, 1080, 1360, 1720, 2000, 2280, 2580, 3020, 3500],
+      flag: 3820, length: 4040 }
+  ][i];
+  const solids = [];
+  spec.grounds.forEach(([x, w]) => solids.push({ x, y: GY, w, h: 160, kind: 'ground' }));
+  const blocks = spec.blocks.map((b, n) => {
+    const solid = { x: b[0] - 6, y: 248, w: 48, h: 40, kind: 'q' };
+    const br = { x: spec.gaps[n][0], y: GY, w: spec.gaps[n][1], h: 160, kind: 'bridge', on: false };
+    solids.push(solid, br);
+    const block = { n, q: Q[b[1]], solid, bridge: br, solved: false, cp: b[2], bump: 0 };
+    solid.block = block;
+    return block;
+  });
+  const plats = [[360, 262, 120], [1500, 262, 100], [2360, 262, 110]];
+  plats.forEach(([x, y, w]) => solids.push({ x, y, w, h: 22, kind: 'brick' }));
+  const enemies = spec.enemies.map(([x, a, b]) => ({ x, y: GY - 30, w: 30, h: 30, a, b, dir: 1, alive: true }));
+  const coins = spec.coins.map(x => {
+    const plat = plats.find(p => x >= p[0] - 6 && x <= p[0] + p[2] + 6);
+    return { x, y: plat ? plat[1] - 18 : 318, got: false, t: Math.random() * 6 };
+  });
+  return { i, solids, blocks, enemies, coins, flag: spec.flag, length: spec.length, spawn: 70 };
+}
+
+function startGame() {
+  name = $('#nameIn').value.trim();
+  if (!name) { $('#nameErr').textContent = 'Escribe tu nombre para entrar a la pista.'; $('#nameIn').focus(); SFX.bad(); return; }
+  $('#nameErr').textContent = '';
+  audio();
+  score = 0; coins = 0; lives = MAXLIVES; hits = 0; fails = []; wi = 0;
+  openWorld(0);
+}
+$('#btnStart').addEventListener('click', startGame);
+$('#nameIn').addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
+
+function openWorld(i) {
+  wi = i; world = makeLevel(i); camX = 0; paused = false; lockQ = false; asked = null;
+  player = { x: world.spawn, y: GY - P_H, vx: 0, vy: 0, on: false, face: 1, inv: 1.2, cp: world.spawn };
+  $('#lvEmoji').textContent = WORLDS[i].emoji;
+  $('#lvNum').textContent = 'MUNDO ' + (i + 1) + ' DE ' + WORLDS.length;
+  $('#lvName').textContent = WORLDS[i].name;
+  $('#lvDesc').textContent = WORLDS[i].desc;
+  mode = 'card'; show('sLevel'); SFX.flag();
+}
+$('#btnGo').addEventListener('click', () => { mode = 'play'; show('sPlay'); hud(); canvas.focus(); });
+
+function hud() {
+  $('#hName').textContent = name;
+  $('#hWorld').textContent = WORLDS[wi].name;
+  $('#hCoins').textContent = coins;
+  $('#hScore').textContent = score;
+  $('#hHearts').innerHTML = [0, 1, 2, 3].map(k => '<span class="' + (k < lives ? '' : 'heart-lost') + '">\u2665</span>').join('');
+}
+
+function overlap(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+function solidsNow() { return world.solids.filter(s => s.kind !== 'bridge' || s.on); }
+
+function update(dt) {
+  if (paused) return;
+  const left = keys['ArrowLeft'] || keys['a'] || keys['A'];
+  const right = keys['ArrowRight'] || keys['d'] || keys['D'];
+  if (left && !right) { player.vx = -MOVE; player.face = -1; }
+  else if (right && !left) { player.vx = MOVE; player.face = 1; }
+  else player.vx *= Math.pow(0.001, dt);
+  player.vy += GRAV * dt;
+  player.x += player.vx * dt;
+  resolve('x');
+  player.y += player.vy * dt;
+  player.on = false;
+  resolve('y');
+  if (player.x < 0) player.x = 0;
+  if (player.y > 560) hurt(true);
+  world.coins.forEach(c => {
+    c.t += dt;
+    if (!c.got && Math.abs(player.x + PW / 2 - c.x) < 22 && Math.abs(player.y + P_H / 2 - c.y) < 24) {
+      c.got = true; coins++; score += 20; SFX.coin(); hud();
+    }
+  });
+  world.enemies.forEach(e => {
+    if (!e.alive) return;
+    e.x += e.dir * 70 * dt;
+    if (e.x < e.a || e.x + e.w > e.b) e.dir *= -1;
+    const box = { x: player.x, y: player.y, w: PW, h: P_H };
+    if (player.inv <= 0 && overlap(box, e)) {
+      const stomp = player.vy > 40 && player.y + P_H - e.y < 18;
+      if (stomp) { e.alive = false; player.vy = JUMP * 0.55; score += 50; SFX.stomp(); hud(); }
+      else hurt(false);
+    }
+  });
+  if (player.inv > 0) player.inv -= dt;
+  world.blocks.forEach(b => { if (b.bump > 0) b.bump = Math.max(0, b.bump - dt); });
+  if (shake > 0) shake = Math.max(0, shake - dt);
+  const goal = world.blocks.every(b => b.solved) && player.x + PW > world.flag;
+  if (goal) finishWorld();
+  runT += dt;
+  const target = Math.max(0, Math.min(world.length - canvas.width, player.x - 340));
+  camX += (target - camX) * Math.min(1, dt * 6);
+}
+
+function resolve(axis) {
+  const box = { x: player.x, y: player.y, w: PW, h: P_H };
+  solidsNow().forEach(s => {
+    const reach = (axis === 'y' && player.vy < 0 && s.kind === 'q')
+      ? { x: player.x - 10, y: player.y, w: PW + 20, h: P_H }
+      : box;
+    if (!overlap(reach, s)) return;
+    if (axis === 'x') {
+      if (player.vx > 0) player.x = s.x - PW; else if (player.vx < 0) player.x = s.x + s.w;
+      player.vx = 0; box.x = player.x;
+    } else if (player.vy > 0) {
+      player.y = s.y - P_H; player.vy = 0; player.on = true; box.y = player.y;
+    } else if (player.vy < 0) {
+      player.y = s.y + s.h; player.vy = 0; box.y = player.y;
+      if (s.block) hitBlock(s.block); else SFX.bump();
+    }
+  });
+}
+function jump() {
+  if (mode !== 'play' || paused || !player.on) return;
+  player.vy = JUMP; player.on = false; SFX.jump();
+}
+function hitBlock(b) {
+  b.bump = 0.16;
+  if (b.solved || lockQ) { SFX.bump(); return; }
+  SFX.bump();
+  openQuestion(b);
+}
+function hurt(fell) {
+  if (player.inv > 0 && !fell) return;
+  lives--; SFX.bad(); shake = 0.25; hud();
+  if (lives <= 0) { endGame(false); return; }
+  player.x = player.cp; player.y = GY - P_H; player.vx = 0; player.vy = 0; player.inv = 1.4;
+  camX = Math.max(0, player.cp - 340);
+}
+
+function openQuestion(b) {
+  paused = true; lockQ = true; asked = b;
+  order = [0, 1, 2, 3];
+  for (let i = 3; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; }
+  correctPos = order.indexOf(b.q.a);
+  $('#mKicker').textContent = 'Caja ' + (b.n + 1) + ' de 4 · ' + WORLDS[wi].name;
+  $('#mHead').textContent = b.q.q;
+  $('#opts').innerHTML = order.map((oi, p) => '<button class="opt o' + p + '" data-p="' + p + '"><span class="key">' + (p + 1) + '</span>' + b.q.o[oi] + '</button>').join('');
+  document.querySelectorAll('.opt').forEach(btn => btn.addEventListener('click', () => answer(+btn.dataset.p)));
+  $('#mWhyBox').style.display = 'none';
+  $('#btnNext').style.display = 'none';
+  $('#modal').classList.add('show');
+}
+function answer(p) {
+  if (!lockQ || $('#btnNext').style.display === 'block') return;
+  const ok = p === correctPos;
+  document.querySelectorAll('.opt').forEach(btn => {
+    const bp = +btn.dataset.p; btn.disabled = true;
+    if (bp === correctPos) btn.classList.add('right');
+    else if (bp === p) btn.classList.add('wrong');
+    else btn.classList.add('dim');
+  });
+  $('#mWhyBox').style.display = 'block';
+  $('#btnNext').style.display = 'block';
+  if (ok) {
+    hits++; score += 150; SFX.ok(); hud();
+    $('#mWhyTitle').textContent = 'Correcto. El puente ya está.';
+    $('#mWhy').textContent = asked.q.why;
+    $('#btnNext').textContent = 'Cruzar el puente';
+    asked.solved = true; asked.bridge.on = true; player.cp = asked.cp;
+  } else {
+    lives--; SFX.bad(); shake = 0.3; hud();
+    fails.push({ q: asked.q.q, a: asked.q.o[asked.q.a], your: p >= 0 ? asked.q.o[order[p]] : 'sin respuesta' });
+    $('#mWhyTitle').textContent = lives > 0 ? 'Esa respuesta no abre el camino.' : 'Sin vidas.';
+    $('#mWhy').textContent = asked.q.hint + ' Te quedan ' + lives + (lives === 1 ? ' vida.' : ' vidas.');
+    $('#btnNext').textContent = lives > 0 ? 'Reintentar la caja' : 'Ver el resultado';
+  }
+}
+function closeQ() {
+  if (!$('#modal').classList.contains('show')) return;
+  $('#modal').classList.remove('show');
+  const dead = lives <= 0;
+  paused = false; lockQ = false;
+  player.vy = 40;
+  if (dead) endGame(false);
+  else canvas.focus();
+}
+$('#btnNext').addEventListener('click', closeQ);
+
+function finishWorld() {
+  if (paused) return;
+  paused = true; SFX.flag(); score += 200; hud();
+  if (wi < WORLDS.length - 1) { lives = Math.min(MAXLIVES, lives + 1); setTimeout(() => openWorld(wi + 1), 700); }
+  else setTimeout(() => endGame(true), 700);
+}
+function endGame(win) {
+  mode = 'end'; paused = true; $('#modal').classList.remove('show');
+  $('#eTop').textContent = win ? 'META CUMPLIDA' : 'FIN DE LA CARRERA';
+  $('#eTitle').textContent = win ? 'Llegaste, ' + name : 'Te quedaste sin vidas, ' + name;
+  $('#eSub').textContent = win ? 'Las ' + Q.length + ' cajas quedaron abiertas.' : 'Puedes volver a correr el mismo recorrido.';
+  $('#eScore').textContent = score;
+  $('#eHits').textContent = hits + '/' + Q.length;
+  $('#eCoins').textContent = coins;
+  $('#eWorld').textContent = (wi + 1) + '/' + WORLDS.length;
+  $('#eReview').innerHTML = fails.length
+    ? '<p class="fred" style="margin:0">Para repasar</p><ul class="review" style="padding:0">' + fails.map(f => '<li><b>' + f.q + '</b><br><span style="color:var(--green)">Correcta: ' + f.a + '</span> · <span class="muted">Elegiste: ' + f.your + '</span></li>').join('') + '</ul>'
+    : '<p class="fred" style="color:var(--green);margin:0">Ninguna caja se tuvo que repetir.</p>';
+  show('sEnd');
+  if (!win) SFX.over();
+}
+$('#btnAgain').addEventListener('click', () => { show('sStart'); mode = 'start'; });
+$('#btnCopy').addEventListener('click', async () => {
+  const t = name + ' · Super Neurona · ' + score + ' pts · cajas ' + hits + '/' + Q.length + ' · monedas ' + coins + ' · mundo ' + (wi + 1) + '/' + WORLDS.length;
+  try { await navigator.clipboard.writeText(t); } catch (e) {
+    const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (_) {} ta.remove();
+  }
+  const to = $('#toast'); to.style.display = 'block'; setTimeout(() => to.style.display = 'none', 1600);
+});
+$('#btnMute').addEventListener('click', () => { muted = !muted; $('#btnMute').textContent = muted ? 'Silencio' : 'Sonido'; });
+
+document.addEventListener('keydown', e => {
+  if ($('#modal').classList.contains('show')) {
+    if (['1', '2', '3', '4'].includes(e.key)) answer(+e.key - 1);
+    if (e.key === 'Enter') closeQ();
+    return;
+  }
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+  keys[e.key] = true;
+  if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') jump();
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+function hold(id, on, off) {
+  const el = $(id);
+  const down = ev => { ev.preventDefault(); keys[on] = true; if (on === 'ArrowUp') jump(); };
+  const up = () => { keys[on] = false; keys[off] = false; };
+  el.addEventListener('pointerdown', down);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointerleave', up);
+}
+hold('#bLeft', 'ArrowLeft'); hold('#bRight', 'ArrowRight'); hold('#bJump', 'ArrowUp');
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function drawBrick(x, y, w, h, mortar) {
+  ctx.fillStyle = mortar || '#c4622d'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = 'rgba(80,30,10,.45)'; ctx.lineWidth = 2;
+  for (let yy = y; yy < y + h; yy += 16) {
+    ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke();
+    const off = ((yy - y) / 16) % 2 ? 16 : 0;
+    for (let xx = x + off; xx < x + w; xx += 32) { ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, Math.min(y + h, yy + 16)); ctx.stroke(); }
+  }
+  ctx.fillStyle = '#67c23a'; ctx.fillRect(x, y, w, 8);
+}
+function drawPlayer(sx, sy) {
+  if (player.inv > 0 && Math.floor(runT * 12) % 2 === 0) return;
+  const bob = player.on && Math.abs(player.vx) > 20 ? Math.sin(runT * 14) * 2 : 0;
+  ctx.save(); ctx.translate(sx + PW / 2, sy + P_H + bob);
+  ctx.scale(player.face, 1);
+  ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(0, 2, 12, 4, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#7c4a2d'; ctx.fillRect(-10, -14, 8, 10); ctx.fillRect(2, -14, 8, 10);
+  ctx.fillStyle = '#385723'; roundRect(-13, -34, 26, 22, 6); ctx.fill();
+  ctx.fillStyle = '#fbbf24'; roundRect(2, -32, 9, 16, 3); ctx.fill();
+  ctx.fillStyle = '#f6c7a1'; ctx.beginPath(); ctx.arc(0, -44, 12, 0, 7); ctx.fill();
+  ctx.fillStyle = cap; roundRect(-13, -58, 26, 12, 5); ctx.fill();
+  ctx.fillRect(-16, -50, 14, 5);
+  ctx.fillStyle = '#1e293b'; ctx.fillRect(-7, -46, 4, 4); ctx.fillRect(3, -46, 4, 4);
+  ctx.restore();
+}
+function drawEnemy(e, sx) {
+  const y = e.y + Math.sin(runT * 8 + e.x) * 1.5;
+  ctx.fillStyle = '#9B3A32'; roundRect(sx, y, e.w, e.h - 4, 10); ctx.fill();
+  ctx.fillStyle = '#7f2d28'; ctx.fillRect(sx + 2, y + e.h - 8, 8, 6); ctx.fillRect(sx + 18, y + e.h - 8, 8, 6);
+  ctx.fillStyle = '#fff'; ctx.fillRect(sx + 6, y + 8, 6, 6); ctx.fillRect(sx + 17, y + 8, 6, 6);
+  ctx.fillStyle = '#1e293b'; ctx.fillRect(sx + 8, y + 10, 3, 3); ctx.fillRect(sx + 19, y + 10, 3, 3);
+}
+function draw() {
+  const sx0 = shake ? (Math.random() - 0.5) * 8 : 0;
+  ctx.setTransform(1, 0, 0, 1, sx0, 0);
+  const sky = ctx.createLinearGradient(0, 0, 0, 480);
+  sky.addColorStop(0, '#d9ead3'); sky.addColorStop(1, '#E2F0D9');
+  ctx.fillStyle = sky; ctx.fillRect(-10, 0, 980, 480);
+  for (let i = 0; i < 5; i++) {
+    const cx = ((i * 280 - camX * 0.3) % (world.length + 200)) - 40;
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    ctx.beginPath(); ctx.ellipse(cx, 70 + (i % 3) * 18, 36, 16, 0, 0, 7); ctx.ellipse(cx + 28, 74, 26, 14, 0, 0, 7); ctx.fill();
+  }
+  ctx.fillStyle = '#C5E0B4';
+  for (let i = 0; i < 8; i++) { const hx = i * 520 - camX * 0.55; ctx.beginPath(); ctx.ellipse(hx, 400, 120, 36, 0, 0, 7); ctx.fill(); }
+  if (!world) return;
+  world.solids.forEach(s => {
+    if (s.kind === 'bridge' && !s.on) return;
+    const x = s.x - camX;
+    if (x > 1000 || x + s.w < -40) return;
+    if (s.kind === 'ground' || s.kind === 'bridge') drawBrick(x, s.y, s.w, s.h, s.kind === 'bridge' ? '#70AD47' : '#548235');
+    else if (s.kind === 'brick') drawBrick(x, s.y, s.w, s.h);
+    else if (s.block) {
+      const y = s.y - (s.block.bump > 0 ? 8 : 0);
+      ctx.fillStyle = s.block.solved ? '#385723' : '#C5E0B4';
+      roundRect(x, y, s.w, s.h, 4); ctx.fill();
+      ctx.strokeStyle = s.block.solved ? '#1c3314' : '#548235'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = s.block.solved ? '#E2F0D9' : '#1c3314';
+      ctx.font = '700 22px Fredoka, Nunito, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(s.block.solved ? '\u2713' : '?', x + s.w / 2, y + 28);
+    }
+  });
+  world.coins.forEach(c => {
+    if (c.got) return;
+    const x = c.x - camX, w = 8 + Math.sin(c.t * 6) * 6;
+    ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.ellipse(x, c.y, Math.abs(w), 12, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#a16207'; ctx.stroke();
+  });
+  world.enemies.forEach(e => { if (e.alive) drawEnemy(e, e.x - camX); });
+  const fx = world.flag - camX;
+  ctx.fillStyle = '#94a3b8'; ctx.fillRect(fx, 210, 6, GY - 210);
+  ctx.fillStyle = '#385723'; ctx.beginPath(); ctx.moveTo(fx + 6, 214); ctx.lineTo(fx + 46, 230); ctx.lineTo(fx + 6, 246); ctx.fill();
+  ctx.fillStyle = '#1c3314'; ctx.fillRect(fx - 16, GY - 28, 40, 28);
+  if (wi === WORLDS.length - 1) {
+    ctx.fillStyle = '#64748b'; ctx.fillRect(fx + 70, GY - 90, 70, 90);
+    ctx.fillStyle = '#334155'; ctx.fillRect(fx + 88, GY - 118, 34, 30);
+  }
+  drawPlayer(player.x - camX, player.y);
+  ctx.fillStyle = 'rgba(15,23,42,.75)'; roundRect(16, 16, 250, 36, 10); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = '700 16px Fredoka, Nunito, sans-serif'; ctx.textAlign = 'left';
+  const done = world.blocks.filter(b => b.solved).length;
+  ctx.fillText('Cajas ' + done + '/4   corre hacia la meta', 28, 40);
+}
+
+function frame(now) {
+  const dt = Math.min(0.034, (now - last) / 1000 || 0);
+  last = now;
+  if (mode === 'play' && world) { update(dt); draw(); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
