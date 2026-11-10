@@ -1,0 +1,1632 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesiones 12 y 13 · Optimización y redes convolucionales</title>
+<!--
+  Infografía interactiva · Máquinas de Aprendizaje
+  Sesión 12: optimización, regularización e hiperparámetros
+  Sesión 13: redes neuronales convolucionales (CNN)
+  Docente: Mag. Solange Basualdo Najera
+  Un solo archivo (HTML + CSS + JS).
+  La convolución, el pooling y el descenso se calculan en el navegador.
+  El clasificador es MobileNetV2 (CNN de Google entrenada con ImageNet):
+  la foto no sale del navegador; solo se descargan los pesos del modelo.
+-->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  if (window.tailwind) tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#1c2416',
+          inst: '#385723',
+          leaf: '#548235',
+          lime: '#70AD47',
+          sage: '#C5E0B4',
+          mint: '#E2F0D9',
+          moss: '#5f6b57',
+          rech: '#9B3A32'
+        },
+        fontFamily: {
+          sans: ['Inter', 'Arial', 'system-ui', 'sans-serif'],
+          serif: ['Source Serif 4', 'Georgia', 'serif']
+        }
+      }
+    }
+  };
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  html { scroll-behavior: smooth; }
+  body { font-family: Inter, Arial, system-ui, sans-serif; background: #f3f6ef; color: #1c2416; overflow-x: hidden; }
+  .serif { font-family: 'Source Serif 4', Georgia, serif; }
+  .card { background: #fff; border: 1px solid #d5e3c8; border-radius: 14px; box-shadow: 0 1px 2px rgba(56,87,35,.06); }
+  .tab-btn[aria-selected="true"] { background: #385723; color: #fff; border-color: #385723; }
+  .tab-btn:focus-visible, button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible {
+    outline: 3px solid #70AD47; outline-offset: 2px;
+  }
+  .chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .acc-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .25s ease; }
+  .acc-body > div { overflow: hidden; }
+  .acc.open .acc-body { grid-template-rows: 1fr; }
+  .acc.open .acc-icon { transform: rotate(45deg); }
+  .acc-icon { transition: transform .2s; display: inline-block; }
+  .flip { perspective: 1000px; }
+  .flip-inner { position: relative; width: 100%; min-height: 248px; transition: transform .5s; transform-style: preserve-3d; }
+  .flip.flipped .flip-inner { transform: rotateY(180deg); }
+  .flip-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; }
+  .flip-back { transform: rotateY(180deg); }
+  .opt { text-align: left; width: 100%; border: 1.5px solid #c5d4b8; border-radius: 10px; padding: 10px 12px; background: #fff; transition: all .15s; }
+  .opt:hover:not([disabled]) { border-color: #548235; background: #f4f9f0; }
+  .opt.ok { border-color: #385723; background: #E2F0D9; }
+  .opt.bad { border-color: #9B3A32; background: #fdf2f0; }
+  .opt[disabled] { cursor: default; }
+  #modal { display: none; }
+  #modal.show { display: flex; }
+  .hidden-soft { display: none; }
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.tbl th { background: #385723; color: #fff; text-align: left; padding: 8px 10px; font-weight: 600; }
+  table.tbl td { border-bottom: 1px solid #e2eadb; padding: 8px 10px; vertical-align: top; }
+  table.tbl tr:nth-child(even) td { background: #f7faf4; }
+  .formula { font-family: ui-monospace, Consolas, monospace; font-size: 13px; background: #f7faf4; border: 1px solid #d5e3c8; border-radius: 8px; padding: 8px 10px; overflow-x: auto; }
+  .cell { width: 38px; height: 34px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-variant-numeric: tabular-nums; border-radius: 4px; border: 1px solid #d5e3c8; }
+  .cell.on { outline: 2px solid #385723; outline-offset: -2px; font-weight: 700; }
+  .cell.pad { background: #ececec !important; color: #6b6b6b; }
+  .cell.hit { background: #385723 !important; color: #fff !important; font-weight: 700; }
+  .pxgrid { display: grid; gap: 2px; width: max-content; }
+  canvas.heat { width: 168px; height: 168px; image-rendering: pixelated; background: #1c2416; border-radius: 8px; }
+  .drop { border: 2px dashed #8fbc6a; background: #f7faf4; border-radius: 14px; }
+  .drop.over { background: #E2F0D9; border-color: #385723; }
+  .bar { height: 8px; background: #E2F0D9; border-radius: 99px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: #548235; }
+  .arch-svg { width: 100%; height: auto; display: block; }
+  @media (max-width: 760px) { .arch-svg { min-width: 880px; } }
+  .sim-frame { width: 100%; height: 680px; border: 0; background: #fff; }
+</style>
+</head>
+<body>
+
+<div class="fixed top-0 left-0 right-0 h-1.5 z-40" style="background:#d5e3c8" aria-hidden="true">
+  <div id="progress" class="h-full transition-[width] duration-100" style="width:0%;background:#70AD47"></div>
+</div>
+
+<div class="max-w-6xl mx-auto px-3 sm:px-5 py-5 space-y-6">
+
+  <header class="rounded-2xl overflow-hidden text-white" style="background: linear-gradient(135deg,#1c3314 0%,#385723 58%,#70AD47 130%);">
+    <div class="p-5 sm:p-8">
+      <div class="flex flex-wrap gap-2 mb-3">
+        <span class="chip bg-white/15">Máquinas de Aprendizaje</span>
+        <span class="chip bg-white/15">Sesión 12 · Optimización</span>
+        <span class="chip bg-white/15">Sesión 13 · CNN</span>
+        <span class="chip" style="background:rgba(197,224,180,.35)">Mag. Solange Basualdo Najera</span>
+      </div>
+      <h1 class="serif text-3xl sm:text-4xl font-bold leading-tight">Entrenar bien una red que sabe mirar</h1>
+      <p class="mt-2 text-green-50 max-w-3xl">Una red densa ya puede aprender. Quedan dos preguntas distintas: cómo dar pasos que sí lleguen al mínimo, y cómo mirar una foto sin romper la vecindad entre píxeles.</p>
+      <div class="grid sm:grid-cols-2 gap-3 mt-5">
+        <div class="bg-white/10 rounded-xl p-4">
+          <p class="text-xs uppercase tracking-wider font-semibold" style="color:#C5E0B4">Sesión 12</p>
+          <p class="mt-1">Elegir el tamaño del paso, el optimizador y las técnicas que evitan que la red memorice: L1, L2, dropout, batch norm, early stopping y búsqueda de hiperparámetros.</p>
+        </div>
+        <div class="bg-white/10 rounded-xl p-4">
+          <p class="text-xs uppercase tracking-wider font-semibold" style="color:#C5E0B4">Sesión 13</p>
+          <p class="mt-1">Explicar qué hace una capa convolucional: kernel, relleno (padding), salto (stride), canales, pooling y la primera CNN que funcionó en serio, LeNet.</p>
+        </div>
+      </div>
+      <nav aria-label="Índice" class="mt-5 flex flex-wrap gap-2 text-sm">
+        <a href="#marco" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25">1 · Ideas</a>
+        <a href="#laboratorio" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25">2 · Laboratorio del kernel</a>
+        <a href="#simuladores" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25">Simuladores</a>
+        <a href="#clasificar" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25">3 · Clasificar una foto</a>
+        <a href="#optimizar" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25">4 · El paso del optimizador</a>
+        <a href="#caso" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25">5 · Caso de la tienda</a>
+        <a href="#quiz" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25">6 · Autoevaluación</a>
+        <a href="#errores" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25">7 · Errores frecuentes</a>
+        <a href="#profundizar" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25">8 · Para profundizar</a>
+        <a href="Super_Neurona.html" class="px-3 py-1.5 rounded-lg font-semibold" style="background:#548235">Jugar Super Neurona</a>
+        <button id="btnCopy" type="button" class="px-3 py-1.5 rounded-lg font-semibold" style="background:#385723">Copiar resumen</button>
+      </nav>
+    </div>
+  </header>
+
+  <p id="selftest" class="hidden rounded-xl border border-red-300 bg-red-50 text-red-900 text-sm p-3" role="alert"></p>
+
+  <section id="marco" class="card p-4 sm:p-6" aria-labelledby="t-marco">
+    <h2 id="t-marco" class="serif text-2xl font-bold text-inst">1 · Las ideas, en orden</h2>
+    <p class="text-sm text-moss mt-1">Cada pestaña recorre una idea. Las flechas del teclado cambian de pestaña cuando el foco está en una de ellas.</p>
+
+    <figure class="mt-4">
+      <figcaption class="font-semibold text-inst">Una CNN pequeña, de la foto a la probabilidad</figcaption>
+      <p class="text-sm text-moss mt-1">En una pantalla angosta, desliza el dibujo de lado. Los tamaños salen de la fórmula: sin relleno, un kernel 5×5 sobre 28 deja 24; un max pooling 2×2 deja 12; otra convolución 5×5 deja 8 y otro pooling deja 4.</p>
+      <div class="overflow-x-auto mt-3 rounded-xl border border-sage bg-white">
+        <svg class="arch-svg" viewBox="0 0 1040 300" role="img" aria-labelledby="archTitle archDesc">
+          <title id="archTitle">Arquitectura de una red convolucional</title>
+          <desc id="archDesc">Un dígito de 28 por 28 pasa por convolución a 24 por 24, max pooling a 12 por 12, convolución a 8 por 8 y pooling a 4 por 4. Luego se aplana, entra a capas densas y softmax asigna la mayor probabilidad al 5.</desc>
+          <defs>
+            <marker id="archArr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 1.2 L 8 5 L 0 8.8 Z" fill="#548235"/>
+            </marker>
+          </defs>
+          <path d="M18 22 H548" stroke="#385723" stroke-width="1.5" fill="none"/>
+          <path d="M18 16 V22 M548 16 V22" stroke="#385723" stroke-width="1.5"/>
+          <text x="283" y="14" text-anchor="middle" font-size="12" font-weight="700" fill="#385723" font-family="Inter, Arial, sans-serif">Aprender rasgos</text>
+          <path d="M612 22 H1022" stroke="#385723" stroke-width="1.5" fill="none"/>
+          <path d="M612 16 V22 M1022 16 V22" stroke="#385723" stroke-width="1.5"/>
+          <text x="817" y="14" text-anchor="middle" font-size="12" font-weight="700" fill="#385723" font-family="Inter, Arial, sans-serif">Clasificar</text>
+
+          <g font-family="Inter, Arial, sans-serif">
+            <rect x="18" y="58" width="74" height="74" rx="8" fill="#1c2416"/>
+            <text x="55" y="112" text-anchor="middle" fill="#ffffff" font-size="48" font-family="Georgia, serif">5</text>
+            <text x="55" y="156" text-anchor="middle" font-size="12" font-weight="700" fill="#385723">Entrada</text>
+            <text x="55" y="172" text-anchor="middle" font-size="11" fill="#5f6b57">28 × 28</text>
+
+            <line x1="100" y1="95" x2="138" y2="95" stroke="#548235" stroke-width="2" marker-end="url(#archArr)"/>
+            <text x="119" y="86" text-anchor="middle" font-size="10" fill="#385723">kernel 5×5</text>
+
+            <g transform="translate(148,46)">
+              <rect x="16" y="0" width="58" height="86" rx="3" fill="#C5E0B4"/>
+              <rect x="8" y="8" width="58" height="86" rx="3" fill="#A9D18E"/>
+              <rect x="0" y="16" width="58" height="86" rx="3" fill="#70AD47"/>
+              <text x="37" y="128" text-anchor="middle" font-size="12" font-weight="700" fill="#385723">Convolución</text>
+              <text x="37" y="144" text-anchor="middle" font-size="11" fill="#5f6b57">24 × 24</text>
+            </g>
+
+            <line x1="230" y1="95" x2="268" y2="95" stroke="#548235" stroke-width="2" marker-end="url(#archArr)"/>
+            <text x="249" y="86" text-anchor="middle" font-size="10" fill="#385723">máx. 2×2</text>
+
+            <g transform="translate(278,58)">
+              <rect x="12" y="0" width="44" height="64" rx="3" fill="#C5E0B4"/>
+              <rect x="6" y="6" width="44" height="64" rx="3" fill="#A9D18E"/>
+              <rect x="0" y="12" width="44" height="64" rx="3" fill="#548235"/>
+              <text x="28" y="104" text-anchor="middle" font-size="12" font-weight="700" fill="#385723">Pooling</text>
+              <text x="28" y="120" text-anchor="middle" font-size="11" fill="#5f6b57">12 × 12</text>
+            </g>
+
+            <line x1="346" y1="95" x2="384" y2="95" stroke="#548235" stroke-width="2" marker-end="url(#archArr)"/>
+            <text x="365" y="86" text-anchor="middle" font-size="10" fill="#385723">kernel 5×5</text>
+
+            <g transform="translate(394,62)">
+              <rect x="36" y="4" width="9" height="58" rx="1" fill="#E2F0D9"/>
+              <rect x="30" y="8" width="9" height="58" rx="1" fill="#C5E0B4"/>
+              <rect x="24" y="12" width="9" height="58" rx="1" fill="#A9D18E"/>
+              <rect x="18" y="16" width="9" height="58" rx="1" fill="#8FBC6A"/>
+              <rect x="12" y="20" width="9" height="58" rx="1" fill="#70AD47"/>
+              <rect x="6" y="24" width="9" height="58" rx="1" fill="#548235"/>
+              <rect x="0" y="28" width="9" height="58" rx="1" fill="#385723"/>
+              <text x="24" y="114" text-anchor="middle" font-size="12" font-weight="700" fill="#385723">Convolución</text>
+              <text x="24" y="130" text-anchor="middle" font-size="11" fill="#5f6b57">8 × 8</text>
+            </g>
+
+            <line x1="452" y1="95" x2="490" y2="95" stroke="#548235" stroke-width="2" marker-end="url(#archArr)"/>
+            <text x="471" y="86" text-anchor="middle" font-size="10" fill="#385723">máx. 2×2</text>
+
+            <g transform="translate(500,70)">
+              <rect x="28" y="6" width="6" height="40" rx="1" fill="#E2F0D9"/>
+              <rect x="23" y="10" width="6" height="40" rx="1" fill="#C5E0B4"/>
+              <rect x="18" y="14" width="6" height="40" rx="1" fill="#A9D18E"/>
+              <rect x="13" y="18" width="6" height="40" rx="1" fill="#70AD47"/>
+              <rect x="8" y="22" width="6" height="40" rx="1" fill="#548235"/>
+              <rect x="3" y="26" width="6" height="40" rx="1" fill="#385723"/>
+              <text x="20" y="96" text-anchor="middle" font-size="12" font-weight="700" fill="#385723">Pooling</text>
+              <text x="20" y="112" text-anchor="middle" font-size="11" fill="#5f6b57">4 × 4</text>
+            </g>
+
+            <line x1="548" y1="95" x2="610" y2="95" stroke="#548235" stroke-width="2" marker-end="url(#archArr)"/>
+            <text x="579" y="86" text-anchor="middle" font-size="10" fill="#385723">aplanar</text>
+
+            <g transform="translate(624,48)" stroke="#C5E0B4" stroke-width="1">
+              <line x1="8" y1="18" x2="46" y2="28"/>
+              <line x1="8" y1="38" x2="46" y2="28"/>
+              <line x1="8" y1="58" x2="46" y2="28"/>
+              <line x1="8" y1="78" x2="46" y2="52"/>
+              <line x1="8" y1="98" x2="46" y2="76"/>
+              <line x1="8" y1="18" x2="46" y2="76"/>
+              <line x1="8" y1="98" x2="46" y2="28"/>
+            </g>
+            <g transform="translate(624,48)" fill="#385723">
+              <circle cx="8" cy="18" r="5"/>
+              <circle cx="8" cy="38" r="5"/>
+              <circle cx="8" cy="58" r="5"/>
+              <circle cx="8" cy="78" r="5"/>
+              <circle cx="8" cy="98" r="5"/>
+              <circle cx="46" cy="28" r="5" fill="#548235"/>
+              <circle cx="46" cy="52" r="5" fill="#548235"/>
+              <circle cx="46" cy="76" r="5" fill="#548235"/>
+            </g>
+            <text x="652" y="168" text-anchor="middle" font-size="12" font-weight="700" fill="#385723" font-family="Inter, Arial, sans-serif">Capas densas</text>
+
+            <line x1="688" y1="95" x2="724" y2="95" stroke="#548235" stroke-width="2" marker-end="url(#archArr)"/>
+
+            <g transform="translate(740,40)" font-family="Inter, Arial, sans-serif">
+              <text x="0" y="12" font-size="12" font-weight="700" fill="#385723">Softmax</text>
+              <g font-size="11" fill="#1c2416">
+                <text x="0" y="36">1</text><rect x="18" y="26" width="8" height="12" rx="2" fill="#A9D18E"/><text x="32" y="36" fill="#5f6b57">0.01</text>
+                <text x="0" y="58">2</text><rect x="18" y="48" width="62" height="12" rx="2" fill="#70AD47"/><text x="86" y="58" fill="#5f6b57">0.20</text>
+                <text x="0" y="80">3</text><rect x="18" y="70" width="56" height="12" rx="2" fill="#70AD47"/><text x="80" y="80" fill="#5f6b57">0.18</text>
+                <text x="0" y="102">4</text><rect x="18" y="92" width="6" height="12" rx="2" fill="#C5E0B4"/><text x="30" y="102" fill="#5f6b57">0.00</text>
+                <rect x="-6" y="110" width="168" height="22" rx="4" fill="#E2F0D9"/>
+                <text x="0" y="126" font-weight="700">5</text><rect x="18" y="116" width="118" height="12" rx="2" fill="#385723"/><text x="142" y="126" font-weight="700" fill="#385723">0.62</text>
+                <text x="0" y="150">9</text><rect x="18" y="140" width="8" height="12" rx="2" fill="#A9D18E"/><text x="32" y="150" fill="#5f6b57">0.01</text>
+              </g>
+              <text x="0" y="176" font-size="11" fill="#5f6b57">Ejemplo de lectura: gana el 5.</text>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <p class="text-sm mt-2">La mitad izquierda aprende rasgos: bordes en los mapas grandes, combinaciones en los mapas chicos. Cada hoja de un bloque es un canal. La mitad derecha clasifica: aplana esos mapas, las capas densas votan y softmax convierte los votos en probabilidades que suman 1. En el ejemplo, el 5 se lleva 0.62; el 2 y el 3 se quedan con casi todo el resto. Es una lectura de muestra, para ver cómo se reparte la duda.</p>
+    </figure>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4 text-sm">
+      <div class="rounded-xl border border-sage p-4">
+        <p class="font-semibold text-inst">1 · Convolución</p>
+        <p class="mt-1">Un kernel, una matriz chica de pesos, se desliza por cada posición de la foto y deja un mapa más pequeño. Cada kernel busca un rasgo distinto. En una capa suele haber varios, a menudo 32 o 64, y una red pequeña apila unas tres o cuatro convoluciones.</p>
+      </div>
+      <div class="rounded-xl border border-sage p-4">
+        <p class="font-semibold text-inst">2 · Activación</p>
+        <p class="mt-1">Sin esta capa, la convolución solo haría sumas con pesos. ReLU se aplica celda por celda, justo después: deja lo positivo y pone en 0 lo negativo. Softmax no va aquí; se reserva para el final, cuando hay que repartir la probabilidad entre las clases.</p>
+      </div>
+      <div class="rounded-xl border border-sage p-4">
+        <p class="font-semibold text-inst">3 · Pooling</p>
+        <p class="mt-1">Encoge el mapa para que lo que sigue no tenga que mirar cada píxel. En una ventana 2×2 con valores 1, 3, 2 y 8, el máximo se queda con 8 y el promedio con 3.5. Suele ir después de la convolución y de la activación.</p>
+      </div>
+      <div class="rounded-xl p-4" style="background:#E2F0D9">
+        <p class="font-semibold text-inst">4 · Capa densa</p>
+        <p class="mt-1">El último mapa se estira en un vector y entra a un perceptrón. Esa parte es la que nombra la clase. El ajuste camina al revés: el error de la salida recorre las capas hasta la primera y corrige los pesos.</p>
+      </div>
+    </div>
+
+    <div role="tablist" aria-label="Marco conceptual" class="flex flex-wrap gap-2 mt-4" id="tabsMarco">
+      <button role="tab" class="tab-btn px-3 py-2 rounded-lg border border-sage text-sm font-semibold" aria-selected="true" aria-controls="p-porque" id="tab-porque">a) Por qué una CNN</button>
+      <button role="tab" class="tab-btn px-3 py-2 rounded-lg border border-sage text-sm font-semibold" aria-selected="false" aria-controls="p-kernel" id="tab-kernel" tabindex="-1">b) Kernel y capa</button>
+      <button role="tab" class="tab-btn px-3 py-2 rounded-lg border border-sage text-sm font-semibold" aria-selected="false" aria-controls="p-pad" id="tab-pad" tabindex="-1">c) Padding y stride</button>
+      <button role="tab" class="tab-btn px-3 py-2 rounded-lg border border-sage text-sm font-semibold" aria-selected="false" aria-controls="p-pool" id="tab-pool" tabindex="-1">d) Canales, pooling, LeNet</button>
+      <button role="tab" class="tab-btn px-3 py-2 rounded-lg border border-sage text-sm font-semibold" aria-selected="false" aria-controls="p-opt" id="tab-opt" tabindex="-1">e) Optimizadores</button>
+      <button role="tab" class="tab-btn px-3 py-2 rounded-lg border border-sage text-sm font-semibold" aria-selected="false" aria-controls="p-reg" id="tab-reg" tabindex="-1">f) Regularizar y ajustar</button>
+    </div>
+
+    <div role="tabpanel" id="p-porque" aria-labelledby="tab-porque" class="mt-5">
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="space-y-2">
+          <div class="acc open rounded-xl border border-sage">
+            <button type="button" class="w-full flex justify-between items-center px-4 py-3 text-left font-semibold" aria-expanded="true"><span>Qué ya sabemos hacer</span><span class="acc-icon text-leaf text-xl leading-none">+</span></button>
+            <div class="acc-body"><div><p class="px-4 pb-3 text-sm">Una neurona calcula z = Wx + b y una activación le pone curva a esa recta. El forward arma la predicción. El backpropagation empieza en el error de la última capa y, con la regla de la cadena, camina hacia atrás capa por capa. En cada una corrige los pesos para que ese error baje. La actualización es θ ← θ − α ∂L/∂θ. Una pregunta es si ese paso α está bien elegido. La otra es qué pasa cuando la entrada es una foto.</p></div></div>
+          </div>
+          <div class="acc rounded-xl border border-sage">
+            <button type="button" class="w-full flex justify-between items-center px-4 py-3 text-left font-semibold" aria-expanded="false"><span>El problema de aplanar la foto</span><span class="acc-icon text-leaf text-xl leading-none">+</span></button>
+            <div class="acc-body"><div><p class="px-4 pb-3 text-sm">Fashion-MNIST es una foto de 28×28. Para dársela a una capa densa se estira a un vector de 784 números. Dos píxeles que eran vecinos pueden quedar lejos en ese vector. Una foto de 1 megapíxel, con 1 000 neuronas ocultas, pide del orden de 10⁹ pesos. Si la capa oculta también fuera de 1 000×1 000, el orden sube a 10¹². Hay dos costos a la vez: demasiados pesos, y una red que ya no sabe qué píxeles se tocan.</p></div></div>
+          </div>
+          <div class="acc rounded-xl border border-sage">
+            <button type="button" class="w-full flex justify-between items-center px-4 py-3 text-left font-semibold" aria-expanded="false"><span>Tres ideas que bajan ese costo</span><span class="acc-icon text-leaf text-xl leading-none">+</span></button>
+            <div class="acc-body"><div><p class="px-4 pb-3 text-sm"><b>Invarianza a la traslación.</b> El mismo patrón sirve en cualquier lugar de la foto, así que se reutilizan los mismos pesos. <b>Localidad.</b> Las primeras capas miran solo una vecindad pequeña. <b>Jerarquía.</b> Las capas de más arriba juntan esos rasgos: bordes, luego texturas, luego partes, luego el objeto. Sirven cuando la foto se comporta así. Si el patrón solo importa en una esquina fija, el supuesto estorba.</p></div></div>
+          </div>
+          <div class="acc rounded-xl border border-sage">
+            <button type="button" class="w-full flex justify-between items-center px-4 py-3 text-left font-semibold" aria-expanded="false"><span>La red encuentra los rasgos sola</span><span class="acc-icon text-leaf text-xl leading-none">+</span></button>
+            <div class="acc-body"><div><p class="px-4 pb-3 text-sm">Un clasificador clásico espera que alguien diseñe las medidas: bordes, colores, texturas. Una CNN las aprende de la foto. La preparación previa es corta: se achica la imagen y, si hace falta, se pasa a escala de grises. La idea viene de la corteza visual. Allí hay neuronas que responden a una forma en un lugar, y se organizan por capas: las primeras ven trazos y las siguientes arman el objeto. La misma receta sirve para audio o para una serie de tiempo, siempre que el dato tenga una vecindad.</p></div></div>
+          </div>
+        </div>
+        <div>
+          <div class="rounded-xl p-4 text-sm" style="background:#E2F0D9">
+            <p class="font-semibold text-inst">La analogía: ¿dónde está Wally?</p>
+            <p class="mt-1">No hace falta una regla distinta en cada rincón de la página. Se desliza el mismo “detector de Wally” por toda la imagen. Eso es un kernel compartido. Primero se buscan rasgos chicos (la gorra, el buzo). Después se combinan. Una capa densa, en cambio, miraría todos los píxeles a la vez, con un peso nuevo para cada uno.</p>
+          </div>
+          <div class="mt-3 overflow-x-auto">
+            <table class="tbl">
+              <thead><tr><th>Restricción que se agrega</th><th>Orden de los pesos</th></tr></thead>
+              <tbody>
+                <tr><td>Capa densa sobre una foto de 1 megapíxel y una capa oculta enorme</td><td>alrededor de 10¹²</td></tr>
+                <tr><td>Los mismos pesos en todas las posiciones</td><td>alrededor de 4×10⁶</td></tr>
+                <tr><td>Además, cada salida solo mira una vecindad pequeña</td><td>unos cientos: del orden de 4Δ²</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-xs text-moss mt-2">Δ es el radio de la vecindad. La última fila ya es una convolución.</p>
+        </div>
+      </div>
+    </div>
+
+    <div role="tabpanel" id="p-kernel" aria-labelledby="tab-kernel" class="mt-5 hidden">
+      <p class="text-sm">La convolución es la capa que extrae los rasgos. Hay que decidir dos cosas: cuántos kernels lleva la capa y de qué tamaño. El kernel no puede ser más grande que la foto, y el mapa que deja es más chico que la entrada. La cuenta, en cada posición, es siempre esta:</p>
+      <ol class="mt-3 space-y-2 text-sm">
+        <li class="rounded-lg bg-mint px-3 py-2"><b>1.</b> Toma una ventana del tamaño del kernel. El kernel es una matriz pequeña de pesos. También se le dice filtro.</li>
+        <li class="rounded-lg bg-white border border-sage px-3 py-2"><b>2.</b> Multiplica cada píxel de la ventana por el peso que está en la misma posición.</li>
+        <li class="rounded-lg bg-mint px-3 py-2"><b>3.</b> Suma esos productos. Ese número es la respuesta de la ventana.</li>
+        <li class="rounded-lg bg-white border border-sage px-3 py-2"><b>4.</b> Le suma un sesgo, un solo número para toda la capa.</li>
+        <li class="rounded-lg bg-mint px-3 py-2"><b>5.</b> La activación se aplica a esa celda. Sin ella, todo el bloque seguiría siendo una suma con pesos. ReLU deja lo positivo y pone en 0 lo negativo. La sigmoide también puede ir aquí; en redes profundas se apaga, y por eso las capas ocultas suelen usar ReLU.</li>
+        <li class="rounded-lg bg-white border border-sage px-3 py-2"><b>6.</b> Escribe el resultado en el mapa de características y desliza la ventana.</li>
+      </ol>
+      <div class="grid md:grid-cols-2 gap-4 mt-4">
+        <div class="rounded-xl border border-sage p-4 text-sm">
+          <p class="font-semibold text-inst">Un ejemplo numérico</p>
+          <p class="mt-1">Entrada 3×3, leída por filas: 0 1 2 / 3 4 5 / 6 7 8. Kernel 2×2: 0 1 / 2 3.</p>
+          <p class="formula mt-2">0×0 + 1×1 + 3×2 + 4×3 = 19</p>
+          <p class="mt-2">Las otras tres posiciones dan 25, 37 y 43. La salida es 2×2 porque el kernel solo cabe en dos lugares por lado: (3 − 2 + 1) = 2.</p>
+        </div>
+        <div class="rounded-xl border border-sage p-4 text-sm">
+          <p class="font-semibold text-inst">Qué se aprende y qué no se voltea a mano</p>
+          <p class="mt-1">Los pesos del kernel y el sesgo empiezan al azar y se ajustan con descenso de gradiente. Un kernel 3×3 de un solo canal tiene 3×3 + 1 = 10 parámetros, compartidos en todas las posiciones.</p>
+          <p class="mt-2">La convolución estricta voltea el kernel. Las capas de deep learning calculan la correlación cruzada, sin ese volteo. Como el kernel se aprende, la red aprende directamente la versión que necesita. Por eso se le sigue diciendo convolución.</p>
+        </div>
+      </div>
+      <div class="mt-4 rounded-xl p-4 text-sm text-white" style="background:#385723">
+        <p class="font-semibold">Un kernel detecta un tipo de cambio</p>
+        <p class="mt-1">El kernel de 1×2 escrito [1, −1] vale 1 cuando la ventana pasa de claro a oscuro, −1 cuando pasa de oscuro a claro, y 0 si los dos píxeles son iguales. Sobre la imagen transpuesta, esa misma cuenta da ceros: ese kernel solo ve bordes verticales. Si se entrena con pares de entrada y salida, el kernel aprendido se acerca a [1, −1].</p>
+      </div>
+      <p class="text-sm mt-4"><b>Mapa de características:</b> la imagen de números que sale de la capa. <b>Campo receptivo:</b> los píxeles de atrás que alcanzan a influir en una celda. Crece con la profundidad. Una celda de la segunda capa puede depender de los cuatro valores de la primera y, a través de ellos, de los nueve píxeles originales del ejemplo.</p>
+    </div>
+
+    <div role="tabpanel" id="p-pad" aria-labelledby="tab-pad" class="mt-5 hidden">
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="rounded-xl border border-sage p-4 text-sm">
+          <p class="font-semibold text-inst">Sin relleno pasan dos cosas</p>
+          <p class="mt-1">Cada capa quita k − 1 filas y k − 1 columnas. Una foto de 240×240, con diez capas de kernel 5×5, baja a 200×200: se pierde cerca del 30 % del alto y del ancho.</p>
+          <p class="mt-2">Además el centro entra en muchas ventanas y la esquina en una sola. En una imagen 5×5 con kernel 3×3, la esquina se usa 1 vez y el centro 9. Lo que está en el borde casi no mueve la salida.</p>
+        </div>
+        <div class="rounded-xl p-4 text-sm" style="background:#E2F0D9">
+          <p class="font-semibold text-inst">Padding: rellenar el borde con ceros</p>
+          <p class="mt-1">Se agregan filas y columnas de ceros alrededor. Esos ceros entran en la multiplicación como cualquier otro píxel. La ventana ya puede arrancar en la esquina real de la foto.</p>
+          <p class="mt-2"><b>Stride:</b> de cuántos píxeles salta la ventana. Con salto 1 se visita cada posición. Con salto 2 la salida se achica y hay menos cuentas. Si la ventana ya no cabe, esa posición se descarta: no se calcula a medias.</p>
+        </div>
+      </div>
+      <div class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm">
+        <p class="font-semibold">Cuidado con la palabra “p”</p>
+        <p class="mt-1">En algunos textos, p es el total de filas agregadas (los dos lados juntos). En PyTorch, <span class="formula">padding</span> es la cantidad por lado, así que el total es el doble. Keras dice <span class="formula">"same"</span> cuando quiere conservar el tamaño y <span class="formula">"valid"</span> cuando no rellena.</p>
+        <p class="mt-2">Esta página usa la convención de PyTorch: p = relleno por lado. Los kernels impares (1, 3, 5, 7) permiten repartir el mismo relleno a izquierda y derecha, y cada salida queda centrada en un píxel.</p>
+      </div>
+      <p class="formula mt-4">salida = ⌊(n + 2p − k) / s⌋ + 1 &nbsp;&nbsp;·&nbsp;&nbsp; con p total (los dos lados juntos): ⌊(n − k + p<sub>total</sub> + s) / s⌋</p>
+      <p class="text-sm mt-2">Regla de memoria: el padding agranda, el kernel achica y el stride divide. El piso ⌊ ⌋ tira las posiciones donde el kernel ya no entra.</p>
+      <div class="overflow-x-auto mt-4">
+        <table class="tbl">
+          <thead><tr><th>Entrada</th><th>k</th><th>p por lado</th><th>s</th><th>Cuenta</th><th>Salida</th></tr></thead>
+          <tbody>
+            <tr><td>28×28</td><td>5</td><td>0</td><td>1</td><td>⌊(28 − 5)/1⌋ + 1 = 24</td><td>24×24</td></tr>
+            <tr><td>32×32</td><td>5</td><td>2</td><td>1</td><td>⌊(32 + 4 − 5)/1⌋ + 1 = 32</td><td>32×32</td></tr>
+            <tr><td>32×32</td><td>3</td><td>1</td><td>2</td><td>⌊(32 + 2 − 3)/2⌋ + 1 = 16</td><td>16×16</td></tr>
+            <tr><td>224×224</td><td>7</td><td>3</td><td>2</td><td>⌊(224 + 6 − 7)/2⌋ + 1 = 112</td><td>112×112</td></tr>
+            <tr><td>7×7</td><td>3</td><td>0</td><td>2</td><td>⌊(7 − 3)/2⌋ + 1 = 3</td><td>3×3</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-5 grid md:grid-cols-[220px_1fr] gap-4 items-start">
+        <div class="space-y-2 text-sm">
+          <label class="block font-semibold" for="sizeN">Lado de la entrada n</label>
+          <input id="sizeN" type="number" min="1" max="1024" value="28" class="w-full border border-sage rounded-lg px-3 py-2">
+          <label class="block font-semibold" for="sizeK">Kernel k</label>
+          <input id="sizeK" type="number" min="1" max="31" value="5" class="w-full border border-sage rounded-lg px-3 py-2">
+          <label class="block font-semibold" for="sizeP">Padding por lado p</label>
+          <input id="sizeP" type="number" min="0" max="16" value="0" class="w-full border border-sage rounded-lg px-3 py-2">
+          <label class="block font-semibold" for="sizeS">Stride s</label>
+          <input id="sizeS" type="number" min="1" max="16" value="1" class="w-full border border-sage rounded-lg px-3 py-2">
+        </div>
+        <div id="sizeOut" class="rounded-xl border border-sage p-4 text-sm" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div role="tabpanel" id="p-pool" aria-labelledby="tab-pool" class="mt-5 hidden">
+      <div class="grid md:grid-cols-2 gap-4 text-sm">
+        <div class="rounded-xl border border-sage p-4">
+          <p class="font-semibold text-inst">Varios canales de entrada</p>
+          <p class="mt-1">Una foto a color trae tres canales: rojo, verde y azul. El kernel tiene un plano por canal. Se hace la correlación en cada plano y se suman. Si el primer canal aporta 19 y el segundo 37, la celda vale 19 + 37 = 56. Sale un solo mapa.</p>
+        </div>
+        <div class="rounded-xl border border-sage p-4">
+          <p class="font-semibold text-inst">Varios canales de salida</p>
+          <p class="mt-1">Cada canal de salida tiene su propio kernel y aprende otro rasgo: un borde, un color, una textura. El número de pesos no depende del tamaño de la foto, porque el mismo kernel se usa en todas las posiciones.</p>
+          <p class="formula mt-2">parámetros = c<sub>salida</sub> × (c<sub>entrada</sub> × k × k + 1)</p>
+        </div>
+      </div>
+      <div class="mt-4 grid sm:grid-cols-3 gap-3 text-sm">
+        <div>
+          <label class="font-semibold" for="paramCin">Canales de entrada</label>
+          <input id="paramCin" type="number" min="1" max="512" value="3" class="mt-1 w-full border border-sage rounded-lg px-3 py-2">
+        </div>
+        <div>
+          <label class="font-semibold" for="paramCout">Canales de salida</label>
+          <input id="paramCout" type="number" min="1" max="512" value="64" class="mt-1 w-full border border-sage rounded-lg px-3 py-2">
+        </div>
+        <div>
+          <label class="font-semibold" for="paramK">Lado del kernel</label>
+          <input id="paramK" type="number" min="1" max="11" value="3" class="mt-1 w-full border border-sage rounded-lg px-3 py-2">
+        </div>
+      </div>
+      <p id="paramOut" class="mt-3 rounded-xl p-3 text-sm" style="background:#E2F0D9" aria-live="polite"></p>
+      <p class="text-sm mt-4"><b>Convolución 1×1.</b> No mira vecinos. En cada píxel mezcla los canales con los mismos pesos. Sirve para bajar o subir la cantidad de canales con poco costo. Inception y ResNet la usan como cuello de botella. La idea está en Network in Network (Lin, Chen y Yan, 2013).</p>
+      <div class="grid md:grid-cols-2 gap-4 mt-4 text-sm">
+        <div class="rounded-xl border border-sage p-4">
+          <p class="font-semibold text-inst">Pooling: resumir sin pesos</p>
+          <p class="mt-1">Sirve para bajar el tamaño de los mapas y que el resto de la red no pague el costo de mirar cada píxel. Max pooling se queda con el mayor de la ventana. Average pooling promedia. En una ventana con 1, 3, 2 y 8, el máximo es 8 y el promedio es 3.5. No hay kernel que aprender: la cuenta es fija. El máximo aguanta que un borde se mueva un píxel dentro de la ventana. El promedio es más suave. En los frameworks, el salto del pooling suele ser igual al lado de la ventana: 2×2 avanza de 2 en 2. Se aplica canal por canal, así que el número de canales no cambia. Lo habitual es ponerla después de una convolución y de su activación.</p>
+        </div>
+        <div class="rounded-xl p-4" style="background:#C5E0B4">
+          <p class="font-semibold text-inst">LeNet-5</p>
+          <p class="mt-1">Entrada 1×28×28. Conv 5×5 con 6 canales y padding 2 → 6×28×28. Average pool 2×2 → 6×14×14. Conv 5×5 con 16 canales → 16×10×10. Average pool → 16×5×5. Se aplana a 400 y siguen tres capas densas: 120, 84 y 10. Activación sigmoide y softmax al final. Alrededor de 61 700 parámetros. LeCun y otros, 1998: menos del 1 % de error por dígito en la lectura de cheques.</p>
+        </div>
+      </div>
+      <div class="mt-4">
+        <p class="font-semibold text-inst">Comprueba el pooling</p>
+        <p class="text-sm text-moss mt-1">La entrada es la matriz 4×4 con los números 0 a 15. El relleno, cuando lo hay, es de ceros y el promedio sí cuenta esos ceros (así lo hace PyTorch por defecto).</p>
+        <div class="flex flex-wrap gap-2 mt-3 text-sm">
+          <label>Ventana <input id="poolWin" type="number" min="1" max="4" value="3" class="w-16 border border-sage rounded px-2 py-1"></label>
+          <label>Padding <input id="poolPad" type="number" min="0" max="2" value="0" class="w-16 border border-sage rounded px-2 py-1"></label>
+          <label>Stride <input id="poolStride" type="number" min="1" max="4" value="3" class="w-16 border border-sage rounded px-2 py-1"></label>
+          <label>Tipo
+            <select id="poolMode" class="border border-sage rounded px-2 py-1">
+              <option value="max">Máximo</option>
+              <option value="avg">Promedio</option>
+            </select>
+          </label>
+          <button type="button" id="poolEj1" class="px-3 py-1 rounded-lg text-white" style="background:#385723">Ejemplo: ventana 3, salto 3</button>
+          <button type="button" id="poolEj2" class="px-3 py-1 rounded-lg border border-sage">Ejemplo: padding 1, salto 2</button>
+        </div>
+        <div id="poolOut" class="mt-3 text-sm" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div role="tabpanel" id="p-opt" aria-labelledby="tab-opt" class="mt-5 hidden">
+      <p class="text-sm">La tasa α es el tamaño del paso. Muy chica: la pérdida baja, pero se gastan épocas. Adecuada: llega en pocos pasos. Muy grande: la pérdida oscila o se dispara. El simulador de más abajo deja ver esos tres comportamientos en una curva de un solo peso.</p>
+      <div class="overflow-x-auto mt-4">
+        <table class="tbl">
+          <thead><tr><th>Variante</th><th>Datos por actualización</th><th>Ventaja</th><th>Costo</th></tr></thead>
+          <tbody>
+            <tr><td>Batch</td><td>Todo el conjunto</td><td>El gradiente es el de todos los datos</td><td>Lento y pide mucha memoria</td></tr>
+            <tr><td>SGD</td><td>1 ejemplo</td><td>Rápido; el ruido ayuda a salir de pozos chicos</td><td>La pérdida zigzaguea</td></tr>
+            <tr><td>Mini-batch</td><td>32, 64, 128 o 256</td><td>El estándar en Keras y PyTorch</td><td>El tamaño del lote es otro hiperparámetro</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid md:grid-cols-2 gap-3 mt-4 text-sm">
+        <div class="rounded-xl border border-sage p-4"><p class="font-semibold text-inst">Momentum</p><p class="mt-1">Guarda una velocidad: el promedio móvil de los gradientes, con β cerca de 0.9. Acelera si el gradiente apunta siempre al mismo lado y frena el zigzag. Polyak (1964). Nesterov, en deep learning: Sutskever y otros (2013).</p></div>
+        <div class="rounded-xl border border-sage p-4"><p class="font-semibold text-inst">AdaGrad</p><p class="mt-1">Achica el paso de los pesos que ya recibieron gradientes grandes. Sirve con datos dispersos. El acumulado solo crece, así que el paso efectivo se va a cero en entrenamientos largos. Duchi, Hazan y Singer (2011).</p></div>
+        <div class="rounded-xl border border-sage p-4"><p class="font-semibold text-inst">RMSprop</p><p class="mt-1">Cambia la suma acumulada de AdaGrad por un promedio móvil de g². El paso ya no se apaga. Lo propuso Hinton en 2012. Es una buena opción en redes recurrentes, o cuando Adam se queda corto generalizando.</p></div>
+        <div class="rounded-xl p-4" style="background:#E2F0D9"><p class="font-semibold text-inst">Adam</p><p class="mt-1">Junta el primer momento (la idea de Momentum) y el segundo (la idea de RMSprop), y corrige el sesgo de los primeros pasos. Valores de partida: β1 = 0.9, β2 = 0.999, ε = 10⁻⁸. Kingma y Ba (2015). AdamW separa el weight decay de esa actualización.</p></div>
+      </div>
+      <div class="overflow-x-auto mt-4">
+        <table class="tbl">
+          <thead><tr><th>Optimizador</th><th>¿Adapta el paso?</th><th>Uso típico</th><th>Qué tener en cuenta</th></tr></thead>
+          <tbody>
+            <tr><td>SGD + Momentum</td><td>No</td><td>Visión, con un calendario de α</td><td>Hay que afinar α; a veces generaliza mejor</td></tr>
+            <tr><td>AdaGrad</td><td>Sí, y el paso se achica siempre</td><td>Datos dispersos</td><td>Se apaga si el entrenamiento es largo</td></tr>
+            <tr><td>RMSprop</td><td>Sí</td><td>Redes recurrentes</td><td>Alternativa si Adam memoriza de más</td></tr>
+            <tr><td>Adam</td><td>Sí</td><td>Punto de partida en casi cualquier red</td><td>Si no converge, probar SGD + Momentum con calendario</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-sm mt-3">Adam es un punto de partida habitual. SGD y momentum suelen usar una α más grande que los adaptativos: cada familia tiene su escala, así que no se comparan con el mismo número.</p>
+    </div>
+
+    <div role="tabpanel" id="p-reg" aria-labelledby="tab-reg" class="mt-5 hidden">
+      <div class="overflow-x-auto">
+        <table class="tbl">
+          <thead><tr><th>Situación</th><th>Qué usar</th><th>Qué le hace a los pesos</th></tr></thead>
+          <tbody>
+            <tr><td>Pocas variables importan</td><td>L1, Lasso</td><td>Lleva coeficientes irrelevantes exactamente a 0</td></tr>
+            <tr><td>Variables correlacionadas</td><td>L2, Ridge, weight decay</td><td>Reparte el peso entre las que se parecen</td></tr>
+            <tr><td>Muchas variables, de los dos tipos</td><td>Elastic Net</td><td>Selecciona y reparte. Zou y Hastie (2005)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-sm mt-3">λ = 0 no penaliza. λ muy grande deja los pesos tan chicos que la red ya no alcanza a aprender. En deep learning, L2 suele entrar como weight decay. En Adam, la forma recomendada es AdamW.</p>
+      <div class="grid md:grid-cols-2 gap-3 mt-4 text-sm">
+        <div class="rounded-xl border border-sage p-4">
+          <p class="font-semibold text-inst">Gradiente que se desvanece o explota</p>
+          <p class="mt-1">Backpropagation multiplica derivadas capa por capa. La derivada de la sigmoide vale como máximo 0.25 y cae a casi 0 en los extremos. Muchos factores menores que 1 apagan el gradiente de las primeras capas. Pesos enormes hacen lo contrario: la actualización se va a infinito y aparecen NaN.</p>
+          <p class="mt-2">Con sigmoide, el gradiente que llega a las primeras capas puede quedar casi en cero. Con ReLU e inicialización de He, la señal se mantiene de una capa a la siguiente.</p>
+        </div>
+        <div class="rounded-xl border border-sage p-4">
+          <p class="font-semibold text-inst">Cómo se evita</p>
+          <ul class="list-disc ml-5 mt-1 space-y-1">
+            <li><b>Xavier / Glorot</b> para sigmoide y tanh. Glorot y Bengio (2010).</li>
+            <li><b>He</b> para ReLU: compensa que ReLU apaga la mitad de las activaciones. He y otros (2015).</li>
+            <li><b>ReLU</b> en las capas ocultas: del lado positivo la derivada vale 1.</li>
+            <li><b>Gradient clipping:</b> si la norma del gradiente pasa un umbral, se reescala. Importa en RNN y LSTM.</li>
+            <li><b>Conexiones residuales:</b> y = f(x) + x. El gradiente viaja por el atajo.</li>
+            <li><b>Batch norm</b> estabiliza la escala de lo que entra a la capa siguiente. Ioffe y Szegedy (2015). En inferencia se usan la media y la desviación acumuladas, no las del último lote.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid md:grid-cols-3 gap-3 mt-4 text-sm">
+        <div class="rounded-xl p-4" style="background:#E2F0D9"><p class="font-semibold text-inst">Dropout</p><p class="mt-1">En cada paso de entrenamiento, cada neurona se apaga con probabilidad p, a menudo entre 0.2 y 0.5. Las que quedan tienen que resolver la tarea sin ella. En evaluación todas vuelven, escaladas. Srivastava, Hinton y otros (2014). Se usa sobre todo en capas densas grandes.</p></div>
+        <div class="rounded-xl p-4" style="background:#E2F0D9"><p class="font-semibold text-inst">Batch norm y dropout juntos</p><p class="mt-1">Batch norm mueve la distribución de las activaciones. Dropout apaga neuronas. Un orden que funciona es: lineal o conv, luego batch norm, luego activación, y dropout al final si hace falta. Juntarlos mal puede inestabilizar el entrenamiento (Li y otros, 2019). Si ya hay batch norm, a veces conviene bajar p.</p></div>
+        <div class="rounded-xl p-4" style="background:#C5E0B4"><p class="font-semibold text-inst">Cómo se leen juntos</p><p class="mt-1">Sin regularizar, el entrenamiento puede seguir bajando mientras la validación se estanca: esa brecha es la señal de memorización. Dropout achica esa brecha. Batch norm acelera y estabiliza, y no reemplaza al dropout. Una combinación útil es batch norm para entrenar con paso más seguro, y dropout si la brecha aparece.</p></div>
+      </div>
+      <div class="mt-4 text-sm space-y-2">
+        <p><b>Grid search</b> prueba una cuadrícula. <b>Random search</b> prueba combinaciones al azar y, cuando solo importan unos pocos hiperparámetros, cubre mejor el mismo presupuesto (Bergstra y Bengio, 2012). <b>La búsqueda bayesiana</b> usa los intentos anteriores para proponer el siguiente (Snoek, Larochelle y Adams, 2012). <b>Hyperband</b> entrena muchas configuraciones pocas épocas, bota la peor mitad y les da más épocas a las que siguen (Li y otros, 2018). <b>Optuna</b> trae TPE y poda automática, con una API en la que el espacio de búsqueda se arma dentro del propio entrenamiento (Akiba y otros, 2019).</p>
+        <p><b>Calendario de α:</b> puede quedarse fija, bajar por escalones, seguir un coseno o subir y luego bajar (one-cycle). El calendario ayuda cuando el entrenamiento es largo. <b>Early stopping</b> mira la validación y se detiene cuando deja de mejorar, aunque el entrenamiento siga bajando. Esa subida de la pérdida de validación es la señal de que la red empezó a memorizar.</p>
+        <p><b>Validación cruzada.</b> Parte los datos en k bloques. Entrena con k − 1 y prueba con el que quedó fuera. Rota cuál es el bloque de prueba y promedia. Si el promedio se cae al cambiar de bloque, el modelo todavía no generaliza: le falta ajuste, o se memorizó el bloque con el que se entrenó.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="laboratorio" class="card p-4 sm:p-6" aria-labelledby="t-lab">
+    <h2 id="t-lab" class="serif text-2xl font-bold text-inst">2 · Laboratorio: desliza un kernel</h2>
+    <p class="text-sm text-moss mt-1">La cuenta es una correlación cruzada, más sesgo, y ReLU si lo enciendes. Empieza por la matriz de ejemplo y comprueba 19, 25, 37 y 43. Después sube una foto: se reduce a 12×12 para poder leer cada suma, y al lado verás mapas de 80×80.</p>
+
+    <div class="flex flex-wrap gap-2 mt-4">
+      <button type="button" class="preset px-3 py-2 rounded-lg border border-sage text-sm font-semibold" data-preset="clase">Matriz de ejemplo</button>
+      <button type="button" class="preset px-3 py-2 rounded-lg border border-sage text-sm font-semibold" data-preset="borde">Bordes verticales</button>
+      <button type="button" class="preset px-3 py-2 rounded-lg border border-sage text-sm font-semibold" data-preset="circulo">Círculo dibujado</button>
+      <label class="px-3 py-2 rounded-lg text-white text-sm font-semibold cursor-pointer" style="background:#385723">Subir imagen
+        <input id="fileLab" type="file" accept="image/*" class="hidden">
+      </label>
+    </div>
+
+    <div class="grid lg:grid-cols-[240px_1fr] gap-5 mt-4">
+      <div class="space-y-3 text-sm">
+        <label class="block font-semibold" for="kPreset">Kernel</label>
+        <select id="kPreset" class="w-full border border-sage rounded-lg px-3 py-2">
+          <option value="clase">2×2 del ejemplo</option>
+          <option value="horiz">1×2 · cambio horizontal [1, −1]</option>
+          <option value="sobelV">3×3 · borde vertical</option>
+          <option value="sobelH">3×3 · borde horizontal</option>
+          <option value="blur">3×3 · desenfoque (todos 1)</option>
+          <option value="sharp">3×3 · realce</option>
+          <option value="custom">Editar a mano</option>
+        </select>
+        <div id="kEditor" class="inline-grid gap-1"></div>
+        <label class="block font-semibold" for="labPad">Padding por lado: <span id="labPadOut">0</span></label>
+        <input id="labPad" type="range" min="0" max="2" value="0" class="w-full">
+        <label class="block font-semibold" for="labStride">Stride: <span id="labStrideOut">1</span></label>
+        <input id="labStride" type="range" min="1" max="3" value="1" class="w-full">
+        <label class="block font-semibold" for="labBias">Sesgo b</label>
+        <input id="labBias" type="number" value="0" step="0.5" class="w-full border border-sage rounded-lg px-3 py-2">
+        <label class="flex items-center gap-2"><input id="labRelu" type="checkbox"> Aplicar ReLU al final</label>
+        <div class="flex gap-2">
+          <button type="button" id="labPrev" class="flex-1 px-2 py-2 rounded-lg border border-sage">← Ventana</button>
+          <button type="button" id="labNext" class="flex-1 px-2 py-2 rounded-lg text-white" style="background:#385723">Ventana →</button>
+        </div>
+      </div>
+      <div>
+        <p id="labFormula" class="formula" aria-live="polite"></p>
+        <p id="labNote" class="text-sm mt-2"></p>
+        <div class="grid md:grid-cols-2 gap-4 mt-3">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-moss mb-1">Entrada (gris = relleno)</p>
+            <div class="overflow-x-auto"><div id="gridIn"></div></div>
+          </div>
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-moss mb-1">Mapa de salida · clic en una celda</p>
+            <div class="overflow-x-auto"><div id="gridOut"></div></div>
+          </div>
+        </div>
+        <div id="labMath" class="mt-3 rounded-xl p-3 text-sm" style="background:#E2F0D9" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="mt-5">
+      <p class="font-semibold text-inst">Así se ve el mapa, un poco más fino</p>
+      <p class="text-sm text-moss">El gris se estira entre el menor y el mayor de cada mapa para que el patrón se vea. El número verdadero está en la cuadrícula de arriba. En una CNN ya entrenada, varios kernels de la primera capa se parecen a estos detectores de borde.</p>
+      <div id="heatRow" class="mt-3 flex flex-wrap gap-4"></div>
+    </div>
+  </section>
+
+  <section id="simuladores" class="card p-4 sm:p-6" aria-labelledby="t-sim">
+    <h2 id="t-sim" class="serif text-2xl font-bold text-inst">Simuladores para mover la red</h2>
+    <p class="text-sm text-moss mt-1">Son páginas públicas. Se cargan al pulsar el botón, porque cada una pesa bastante, y hace falta internet. Si un recuadro queda en blanco, ábrelo en otra pestaña: algunos navegadores no dejan incrustar la página.</p>
+
+    <div class="mt-4 rounded-xl border border-sage overflow-hidden">
+      <div class="p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="max-w-xl">
+          <p class="font-semibold text-inst">Una CNN, capa por capa</p>
+          <p class="text-sm text-moss mt-1">CNN Explainer, de Georgia Tech. Eliges una foto y puedes abrir la convolución, la ReLU y el pooling. La interfaz está en inglés: <span class="formula">convolution</span> es la convolución y <span class="formula">pooling</span> es el resumen de la ventana.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="px-3 py-2 rounded-lg text-white text-sm font-semibold" style="background:#385723" data-load-sim="simCnn" data-src="https://poloclub.github.io/cnn-explainer/">Abrir aquí</button>
+          <a class="px-3 py-2 rounded-lg border border-sage text-sm font-semibold" href="https://poloclub.github.io/cnn-explainer/" target="_blank" rel="noopener">En otra pestaña</a>
+        </div>
+      </div>
+      <iframe id="simCnn" class="sim-frame hidden" title="CNN Explainer: convolución, ReLU y pooling"></iframe>
+    </div>
+
+    <div class="mt-4 rounded-xl border border-sage overflow-hidden">
+      <div class="p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="max-w-xl">
+          <p class="font-semibold text-inst">Dibuja un dígito y mira el recorrido</p>
+          <p class="text-sm text-moss mt-1">Adam Harley. La red ya está entrenada con MNIST. Dibujas un número y ves qué mapas se encienden hasta la probabilidad final. Es el mismo camino del dibujo de arriba, con un dígito de verdad.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="px-3 py-2 rounded-lg text-white text-sm font-semibold" style="background:#385723" data-load-sim="simDigit" data-src="https://adamharley.com/nn_vis/cnn/3d.html">Abrir aquí</button>
+          <a class="px-3 py-2 rounded-lg border border-sage text-sm font-semibold" href="https://adamharley.com/nn_vis/cnn/3d.html" target="_blank" rel="noopener">En otra pestaña</a>
+        </div>
+      </div>
+      <iframe id="simDigit" class="sim-frame hidden" title="Red convolucional en 3D que clasifica un dígito dibujado"></iframe>
+    </div>
+
+    <div class="mt-4 rounded-xl border border-sage overflow-hidden">
+      <div class="p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="max-w-xl">
+          <p class="font-semibold text-inst">Una red densa: el paso y la regularización</p>
+          <p class="text-sm text-moss mt-1">TensorFlow Playground. No mira fotos: separa puntos de dos colores. Sirve para ver la tasa de aprendizaje, el número de capas y la regularización. Sube la tasa hasta que la curva deje de bajar, y prueba L2 cuando la frontera se memoriza.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="px-3 py-2 rounded-lg text-white text-sm font-semibold" style="background:#385723" data-load-sim="simPlay" data-src="https://playground.tensorflow.org/">Abrir aquí</button>
+          <a class="px-3 py-2 rounded-lg border border-sage text-sm font-semibold" href="https://playground.tensorflow.org/" target="_blank" rel="noopener">En otra pestaña</a>
+        </div>
+      </div>
+      <iframe id="simPlay" class="sim-frame hidden" title="TensorFlow Playground: tasa de aprendizaje y regularización"></iframe>
+    </div>
+  </section>
+
+  <section id="clasificar" class="card p-4 sm:p-6" aria-labelledby="t-cls">
+    <h2 id="t-cls" class="serif text-2xl font-bold text-inst">3 · Clasifica una foto con una CNN de verdad</h2>
+    <p class="text-sm mt-1">MobileNetV2 es una red convolucional publicada por Google. Se entrenó con ImageNet: más de un millón de fotos y 1 000 clases de objetos, animales y escenas. Los pesos se descargan la primera vez (hace falta internet). La clasificación corre en tu navegador: la foto no se envía a un servidor.</p>
+    <div class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm">
+      ImageNet no incluye las 10 prendas de Fashion-MNIST ni los dígitos de la UCI como clases propias. Una camisa puede salir como “jersey” o “sweatshirt”. Un número escrito a mano no va a ser leído como dígito. Para clasificar prendas o dígitos hay que entrenar una CNN con esos conjuntos.
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-5 mt-4">
+      <div>
+        <div id="dropZone" class="drop p-4 text-center">
+          <p class="font-semibold">Suelta una foto aquí o elige un ejemplo</p>
+          <p class="text-xs text-moss mt-1">JPG o PNG. Un objeto claro, bien iluminado, funciona mejor.</p>
+          <div class="flex flex-wrap justify-center gap-2 mt-3">
+            <label class="px-3 py-2 rounded-lg text-white text-sm font-semibold cursor-pointer" style="background:#385723">Elegir archivo
+              <input id="fileCls" type="file" accept="image/*" class="hidden">
+            </label>
+            <button type="button" class="sample px-3 py-2 rounded-lg border border-sage text-sm" data-url="https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/330px-Cat03.jpg" data-name="Gato (Wikimedia Commons)">Gato</button>
+            <button type="button" class="sample px-3 py-2 rounded-lg border border-sage text-sm" data-url="https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/A_small_cup_of_coffee.JPG/330px-A_small_cup_of_coffee.JPG" data-name="Taza de café (Wikimedia Commons)">Taza</button>
+            <button type="button" class="sample px-3 py-2 rounded-lg border border-sage text-sm" data-url="https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Bananas_on_black_background_02.jpg/330px-Bananas_on_black_background_02.jpg" data-name="Plátanos (Wikimedia Commons)">Plátanos</button>
+          </div>
+          <img id="previewImg" alt="" class="mx-auto mt-4 max-h-64 rounded-lg hidden">
+        </div>
+        <button type="button" id="btnCls" class="mt-3 w-full py-3 rounded-xl text-white font-semibold disabled:opacity-50" style="background:#385723" disabled>Clasificar con MobileNetV2</button>
+        <p id="clsStatus" class="text-sm mt-2 text-moss" role="status">Todavía no hay una imagen.</p>
+      </div>
+      <div>
+        <div id="clsResult" class="rounded-xl border border-dashed border-sage p-4 text-sm text-moss min-h-[180px]">Las cinco clases más probables aparecerán aquí, con el nombre oficial de ImageNet en inglés.</div>
+        <div class="mt-4 text-sm">
+          <p class="font-semibold text-inst">Qué hace la red con tu foto, en capas</p>
+          <ol class="list-decimal ml-5 mt-1 space-y-1">
+            <li>Las primeras convoluciones arman mapas de bordes, color y textura. En el laboratorio de arriba puedes ver ese tipo de mapa.</li>
+            <li>El pooling y los saltos bajan la resolución y agrandan el campo receptivo.</li>
+            <li>Las capas profundas mezclan esos rasgos hasta describir el objeto.</li>
+            <li>Una capa final reparte 1 000 puntajes. Softmax los convierte en probabilidades que suman 1.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6">
+      <h3 class="font-bold text-inst text-lg">Conjuntos públicos para entrenar la tuya</h3>
+      <p class="text-sm text-moss mt-1">El simulador de arriba ya viene entrenado. Estos conjuntos sirven para armar un proyecto propio. Todos se pueden bajar sin costo para estudio.</p>
+      <div class="overflow-x-auto mt-3">
+        <table class="tbl">
+          <thead><tr><th>Conjunto</th><th>Quién lo publica</th><th>Qué trae</th><th>Para qué usarlo</th></tr></thead>
+          <tbody>
+            <tr><td><a class="underline text-inst" href="https://github.com/zalandoresearch/fashion-mnist" target="_blank" rel="noopener">Fashion-MNIST</a></td><td>Zalando Research. También en <a class="underline" href="https://www.kaggle.com/datasets/zalando-research/fashionmnist" target="_blank" rel="noopener">Kaggle</a></td><td>70 000 imágenes 28×28, 10 prendas, clases balanceadas</td><td>El caso de la tienda de ropa</td></tr>
+            <tr><td><a class="underline text-inst" href="http://yann.lecun.com/exdb/mnist/" target="_blank" rel="noopener">MNIST</a></td><td>LeCun, a partir de NIST. Competencia en <a class="underline" href="https://www.kaggle.com/competitions/digit-recognizer" target="_blank" rel="noopener">Kaggle</a></td><td>Dígitos manuscritos, 28×28</td><td>El problema original de LeNet</td></tr>
+            <tr><td><a class="underline text-inst" href="https://archive.ics.uci.edu/dataset/80/optical+recognition+of+handwritten+digits" target="_blank" rel="noopener">Dígitos ópticos</a></td><td>UCI Machine Learning Repository</td><td>5 620 dígitos de 8×8, ya en tabla</td><td>Probar una red pequeña sin GPU</td></tr>
+            <tr><td><a class="underline text-inst" href="https://www.cs.toronto.edu/~kriz/cifar.html" target="_blank" rel="noopener">CIFAR-10</a></td><td>Universidad de Toronto. También en Kaggle</td><td>60 000 fotos a color 32×32, 10 clases</td><td>Pasar de un canal a tres canales</td></tr>
+            <tr><td><a class="underline text-inst" href="https://www.image-net.org/" target="_blank" rel="noopener">ImageNet</a></td><td>Stanford y Princeton. Lo usan los modelos de Google</td><td>Más de un millón de fotos, 1 000 clases</td><td>El conjunto con el que se entrenó MobileNet</td></tr>
+            <tr><td><a class="underline text-inst" href="https://storage.googleapis.com/openimages/web/index.html" target="_blank" rel="noopener">Open Images</a></td><td>Google</td><td>Millones de fotos con cajas y etiquetas</td><td>Cuando el objetivo es localizar el objeto, no solo nombrarlo</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="optimizar" class="card p-4 sm:p-6" aria-labelledby="t-opti">
+    <h2 id="t-opti" class="serif text-2xl font-bold text-inst">4 · Mira el tamaño del paso</h2>
+    <p class="text-sm text-moss mt-1">Esta curva es un paisaje de juguete, de un solo peso, para ver el tamaño del paso sin entrenar una red. Hay un valle profundo a la izquierda y otro más alto a la derecha. La pérdida es 0.15 w⁴ − 0.8 w² + 0.2 w. No es la pérdida de Fashion-MNIST.</p>
+    <div class="grid lg:grid-cols-[240px_1fr] gap-5 mt-4">
+      <div class="space-y-3 text-sm">
+        <label class="block font-semibold" for="optName">Optimizador</label>
+        <select id="optName" class="w-full border border-sage rounded-lg px-3 py-2">
+          <option value="sgd">SGD</option>
+          <option value="mom">Momentum (β = 0.9)</option>
+          <option value="rms">RMSprop</option>
+          <option value="adam">Adam</option>
+        </select>
+        <label class="block font-semibold" for="optLr">Tasa α: <span id="optLrOut">0.15</span></label>
+        <input id="optLr" type="range" min="0.02" max="1.2" step="0.01" value="0.15" class="w-full">
+        <label class="block font-semibold" for="optX0">Peso inicial: <span id="optX0Out">2.10</span></label>
+        <input id="optX0" type="range" min="-2.4" max="2.4" step="0.05" value="2.1" class="w-full">
+        <div class="flex gap-2">
+          <button type="button" id="optPlay" class="flex-1 py-2 rounded-lg text-white font-semibold" style="background:#385723">Animar</button>
+          <button type="button" id="optReset" class="flex-1 py-2 rounded-lg border border-sage font-semibold">Reiniciar</button>
+        </div>
+        <p class="text-xs text-moss">Prueba α = 0.9 con Momentum desde 2.1: el paso se va del gráfico. Prueba el peso inicial en −2.3 con α chica: caes al valle más bajo.</p>
+      </div>
+      <div>
+        <canvas id="optCanvas" class="w-full rounded-xl border border-sage bg-white" height="280" aria-label="Curva de pérdida y posición del peso"></canvas>
+        <p id="optRead" class="text-sm mt-2" aria-live="polite"></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="caso" class="card p-4 sm:p-6" aria-labelledby="t-caso">
+    <h2 id="t-caso" class="serif text-2xl font-bold text-inst">5 · Caso: la tienda que clasifica prendas</h2>
+    <div class="mt-3 rounded-xl p-4 text-sm text-white" style="background:#385723">
+      <p>Una tienda recibe cientos de fotos de ropa al día y una persona las etiqueta a mano. Quiere automatizar esa tarea con Fashion-MNIST: fotos de 28×28 y diez prendas (camiseta, pantalón, suéter, vestido, abrigo, sandalia, camisa, zapatilla, bolso y bota). Las clases están balanceadas, así que la exactitud es una métrica razonable. Camiseta, suéter, abrigo y camisa tienen siluetas parecidas, y ahí la red duda. Pantalón, bolso y el calzado se separan más fácil. Lo mismo pasa con otras fotos: si el color y la forma contrastan, como una zanahoria junto a una cebolla, la clase sale más clara; si las formas se parecen, hay que mirar en qué clases se equivoca.</p>
+    </div>
+    <p class="text-sm mt-3">El caso no pide un porcentaje. Pide decidir la arquitectura, el tamaño del paso, el optimizador y qué decirle a la tienda cuando dos prendas de arriba se parecen.</p>
+    <div id="casoSteps" class="mt-4 space-y-4"></div>
+  </section>
+
+  <section id="quiz" class="card p-4 sm:p-6" aria-labelledby="t-quiz">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 id="t-quiz" class="serif text-2xl font-bold text-inst">6 · Autoevaluación</h2>
+      <span class="chip" style="background:#E2F0D9;color:#385723" id="quizScoreTop">Puntaje: 0 / 6</span>
+    </div>
+    <div id="quizBox" class="mt-4 space-y-5"></div>
+    <div id="quizEnd" class="hidden-soft mt-5 rounded-xl p-4 border-2"></div>
+    <button type="button" id="quizReset" class="mt-4 px-4 py-2 rounded-lg border border-sage font-semibold">Reintentar</button>
+  </section>
+
+  <section id="errores" class="card p-4 sm:p-6" aria-labelledby="t-err">
+    <h2 id="t-err" class="serif text-2xl font-bold text-inst">7 · Encuentra el error</h2>
+    <p class="text-sm text-moss mt-1">Lee la frase y haz clic para ver la corrección.</p>
+    <div id="errGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4"></div>
+  </section>
+
+  <section id="profundizar" class="card p-4 sm:p-6" aria-labelledby="t-prof">
+    <h2 id="t-prof" class="serif text-2xl font-bold text-inst">8 · Material para profundizar</h2>
+    <p class="text-sm text-moss mt-1">Empieza por el capítulo corto. El libro y las notas de Stanford quedan para cuando el laboratorio ya salga solo.</p>
+    <div class="grid md:grid-cols-2 gap-3 mt-4 text-sm">
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://d2l.ai/chapter_multilayer-perceptrons/index.html" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">Dive into Deep Learning · perceptrones multicapa</p>
+        <p class="mt-1 text-moss">Subajuste, sobreajuste, weight decay, dropout y estabilidad numérica. El puente con la optimización y la regularización.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://d2l.ai/chapter_optimization/index.html" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">D2L · optimización</p>
+        <p class="mt-1 text-moss">Gradiente, SGD, momentum, AdaGrad, RMSProp, Adam y calendarios de la tasa.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://d2l.ai/chapter_convolutional-neural-networks/index.html" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">D2L · capítulo 7, CNN</p>
+        <p class="mt-1 text-moss">De la capa densa a la convolución, padding, stride, canales, pooling y LeNet.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://d2l.ai/chapter_convolutional-modern/index.html" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">D2L · CNN modernas</p>
+        <p class="mt-1 text-moss">AlexNet, VGG, NiN, GoogLeNet, Batch Norm y ResNet. El siguiente paso después de LeNet.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://cs231n.github.io/convolutional-networks/" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">Stanford CS231n · notas de convolución</p>
+        <p class="mt-1 text-moss">Otra explicación, con figuras, de la ventana, el relleno, el salto y el número de pesos.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://www.deeplearningbook.org/" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">Goodfellow, Bengio y Courville · Deep Learning</p>
+        <p class="mt-1 text-moss">Capítulo 8 para optimización y capítulo 9 para redes convolucionales. Libro libre en la web del MIT Press.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://arxiv.org/abs/1603.07285" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">Dumoulin y Visin · aritmética de la convolución</p>
+        <p class="mt-1 text-moss">La guía corta para no perderse entre padding, stride y kernels que no son cuadrados.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://medium.com/@jajp2203/clasificaci%C3%B3n-de-im%C3%A1genes-con-redes-profundas-a229774e53f4" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">Clasificación de imágenes con redes profundas</p>
+        <p class="mt-1 text-moss">Explica, en español, las cuatro piezas: convolución, activación, pooling y la capa densa que clasifica. También muestra el mismo método sobre prendas, fotos de satélite y verduras.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://www.youtube.com/watch?v=KuXjwB4LzSA" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">3Blue1Brown · But what is a convolution?</p>
+        <p class="mt-1 text-moss">Quince minutos, en inglés, para ver la ventana deslizarse antes de volver a la fórmula.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://arxiv.org/abs/1412.6980" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">Kingma y Ba (2015) · Adam</p>
+        <p class="mt-1 text-moss">El artículo de Adam, un punto de partida habitual para entrenar.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://www.jmlr.org/papers/v15/srivastava14a.html" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">Srivastava y otros (2014) · Dropout</p>
+        <p class="mt-1 text-moss">Por qué apagar neuronas al azar equivale, en la práctica, a promediar muchas subredes.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://optuna.org/" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">Optuna</p>
+        <p class="mt-1 text-moss">Herramienta para buscar hiperparámetros con TPE y poda automática.</p>
+      </a>
+      <a class="rounded-xl border border-sage p-4 hover:bg-mint" href="https://github.com/zalandoresearch/fashion-mnist" target="_blank" rel="noopener">
+        <p class="font-semibold text-inst">Fashion-MNIST, repositorio oficial</p>
+        <p class="mt-1 text-moss">Descripción de las diez clases, cómo bajar los datos y por qué se propuso como reemplazo de MNIST.</p>
+      </a>
+    </div>
+    <div class="mt-4 rounded-xl p-4 text-sm" style="background:#E2F0D9">
+      <p class="font-semibold text-inst">Artículos de referencia</p>
+      <p class="mt-1">LeCun y otros (1998), Gradient-Based Learning Applied to Document Recognition. Ioffe y Szegedy (2015), Batch Normalization. Glorot y Bengio (2010). He y otros (2015), Delving Deep into Rectifiers. Bergstra y Bengio (2012). Li y otros (2018), Hyperband. Akiba y otros (2019). Zou y Hastie (2005), Elastic Net. Fukushima (1982), el Neocognitron. Hubel y Wiesel (1962), campos receptivos. Riesenhuber y Poggio (1999), modelos jerárquicos.</p>
+    </div>
+  </section>
+
+  <footer class="text-center text-xs text-moss pb-8 space-y-1">
+    <p>Máquinas de Aprendizaje · Sesiones 12 y 13 · Mag. Solange Basualdo Najera</p>
+    <p>Clasificador: MobileNetV2 sobre ImageNet, ejecutado con TensorFlow.js en el navegador.</p>
+  </footer>
+</div>
+
+<div id="modal" class="fixed inset-0 z-50 items-center justify-center p-4" style="background:rgba(28,36,22,.55)" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-xl max-h-[85vh] overflow-y-auto">
+    <h3 id="modalTitle" class="font-bold text-inst text-lg"></h3>
+    <div id="modalBody" class="mt-2 text-sm leading-relaxed"></div>
+    <div class="text-right mt-4"><button type="button" id="modalClose" class="px-4 py-2 rounded-lg text-white font-semibold" style="background:#385723">Entendido</button></div>
+  </div>
+</div>
+<div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 text-white px-4 py-2 rounded-lg shadow-lg hidden-soft" style="background:#385723" role="status">Resumen copiado</div>
+
+<script>
+const $ = s => document.querySelector(s);
+function updateProgress() {
+  const h = document.documentElement;
+  const max = h.scrollHeight - h.clientHeight;
+  $('#progress').style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + '%';
+}
+window.addEventListener('scroll', updateProgress, { passive: true });
+
+function initTabs(listId) {
+  const tabs = [...document.getElementById(listId).querySelectorAll('[role="tab"]')];
+  function select(tab) {
+    tabs.forEach(t => {
+      const on = t === tab;
+      t.setAttribute('aria-selected', on);
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).classList.toggle('hidden', !on);
+    });
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => select(t));
+    t.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      const n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+      n.focus(); select(n);
+    });
+  });
+}
+initTabs('tabsMarco');
+
+document.querySelectorAll('.acc > button').forEach(b => b.addEventListener('click', () => {
+  const open = b.parentElement.classList.toggle('open');
+  b.setAttribute('aria-expanded', open);
+}));
+
+let lastFocus = null;
+function openModal(title, html) {
+  lastFocus = document.activeElement;
+  $('#modalTitle').textContent = title;
+  $('#modalBody').innerHTML = html;
+  $('#modal').classList.add('show');
+  $('#modalClose').focus();
+}
+function closeModal() {
+  $('#modal').classList.remove('show');
+  if (lastFocus) lastFocus.focus();
+}
+$('#modalClose').addEventListener('click', closeModal);
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal').classList.contains('show')) closeModal(); });
+
+function outSize(n, k, p, s) {
+  if (s < 1 || k < 1 || n < 1) return 0;
+  const v = Math.floor((n + 2 * p - k) / s) + 1;
+  return v > 0 ? v : 0;
+}
+function convolve(img, kernel, pad, stride) {
+  const h = img.length, w = img[0].length, kh = kernel.length, kw = kernel[0].length;
+  const oh = outSize(h, kh, pad, stride), ow = outSize(w, kw, pad, stride);
+  const out = [];
+  for (let i = 0; i < oh; i++) {
+    const row = [];
+    for (let j = 0; j < ow; j++) {
+      let sum = 0;
+      for (let u = 0; u < kh; u++) for (let v = 0; v < kw; v++) {
+        const y = i * stride + u - pad, x = j * stride + v - pad;
+        const pix = (y < 0 || x < 0 || y >= h || x >= w) ? 0 : img[y][x];
+        sum += pix * kernel[u][v];
+      }
+      row.push(sum);
+    }
+    out.push(row);
+  }
+  return out;
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function pool(img, win, pad, stride, mode) {
+  const h = img.length, w = img[0].length;
+  const oh = outSize(h, win, pad, stride), ow = outSize(w, win, pad, stride);
+  const out = [];
+  for (let i = 0; i < oh; i++) {
+    const row = [];
+    for (let j = 0; j < ow; j++) {
+      const vals = [];
+      for (let u = 0; u < win; u++) for (let v = 0; v < win; v++) {
+        const y = i * stride + u - pad, x = j * stride + v - pad;
+        vals.push((y < 0 || x < 0 || y >= h || x >= w) ? 0 : img[y][x]);
+      }
+      row.push(mode === 'max' ? Math.max(...vals) : vals.reduce((a, b) => a + b, 0) / vals.length);
+    }
+    out.push(row);
+  }
+  return { out };
+}
+function fmt(n) {
+  if (!Number.isFinite(n)) return '—';
+  const r = Math.round(n * 100) / 100;
+  return Number.isInteger(r) ? String(r) : r.toFixed(2);
+}
+function same(a, b) {
+  return a.length === b.length && a.every((row, i) => row.length === b[i].length && row.every((v, j) => Math.abs(v - b[i][j]) < 1e-9));
+}
+
+function selfTest() {
+  const img = [[0, 1, 2], [3, 4, 5], [6, 7, 8]];
+  const y = convolve(img, [[0, 1], [2, 3]], 0, 1);
+  const ok1 = same(y, [[19, 25], [37, 43]]);
+  const edge = convolve([[1, 1, 0, 0, 0, 0, 1, 1]], [[1, -1]], 0, 1);
+  const ok2 = same(edge, [[0, 1, 0, 0, 0, -1, 0]]);
+  const ok3 = outSize(28, 5, 0, 1) === 24 && outSize(32, 5, 2, 1) === 32 && outSize(32, 3, 1, 2) === 16 && outSize(224, 7, 3, 2) === 112 && outSize(7, 3, 0, 2) === 3;
+  const grid = [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]];
+  const ok4 = same(pool(grid, 3, 0, 3, 'max').out, [[10]]);
+  const ok5 = same(pool(grid, 3, 1, 2, 'max').out, [[5, 7], [13, 15]]);
+  const avg = pool([[0, 1, 2], [3, 4, 5], [6, 7, 8]], 2, 0, 1, 'avg').out;
+  const ok6 = same(avg, [[2, 3], [5, 6]]);
+  const c1 = convolve(img, [[0, 1], [2, 3]], 0, 1)[0][0];
+  const c2 = convolve([[1, 2, 3], [4, 5, 6], [7, 8, 9]], [[1, 2], [3, 4]], 0, 1)[0][0];
+  const ok7 = c1 + c2 === 56 && 64 * (3 * 3 * 3 + 1) === 1792;
+  const d2l = Math.floor((8 - 3 + 2 + 2) / 2);
+  const ok8 = d2l === 4 && outSize(8, 3, 1, 2) === 4;
+  return ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8;
+}
+if (!selfTest()) {
+  const b = $('#selftest');
+  b.textContent = 'La comprobación interna de los ejemplos no pasó. Revisa los números de esta página antes de usarlos.';
+  b.classList.remove('hidden');
+}
+
+const KERNELS = {
+  clase: [[0, 1], [2, 3]],
+  horiz: [[1, -1]],
+  sobelV: [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]],
+  sobelH: [[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
+  blur: [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+  sharp: [[0, -1, 0], [-1, 5, -1], [0, -1, 0]]
+};
+function cloneK(k) { return k.map(r => r.slice()); }
+function circleImg(n) {
+  const m = [];
+  for (let y = 0; y < n; y++) {
+    const row = [];
+    for (let x = 0; x < n; x++) {
+      const dy = y - (n - 1) / 2, dx = x - (n - 1) / 2;
+      row.push(dx * dx + dy * dy <= (n * 0.32) ** 2 ? 1 : 0);
+    }
+    m.push(row);
+  }
+  return m;
+}
+const PRESETS = {
+  clase: { img: [[0, 1, 2], [3, 4, 5], [6, 7, 8]], kernel: 'clase', pad: 0, stride: 1, note: 'Matriz de ejemplo. La primera ventana vale 19.' },
+  borde: {
+    img: Array.from({ length: 6 }, () => [1, 1, 0, 0, 0, 0, 1, 1]),
+    kernel: 'horiz', pad: 0, stride: 1,
+    note: '1 es claro y 0 es oscuro. [1, −1] marca el cambio de claro a oscuro con 1 y el inverso con −1.'
+  },
+  circulo: { img: circleImg(10), kernel: 'sobelV', pad: 1, stride: 1, note: 'Un círculo de 0 y 1. El borde vertical enciende el lado izquierdo y el derecho con signos distintos.' }
+};
+const Lab = { img: PRESETS.clase.img.map(r => r.slice()), kernel: cloneK(KERNELS.clase), pad: 0, stride: 1, bias: 0, relu: false, step: 0, fine: null, note: PRESETS.clase.note };
+
+function rangeOf(m) {
+  let mn = Infinity, mx = -Infinity;
+  m.forEach(r => r.forEach(v => { if (v < mn) mn = v; if (v > mx) mx = v; }));
+  return { mn, mx };
+}
+function cellStyle(v, mn, mx, extra) {
+  const t = (v - mn) / ((mx - mn) || 1);
+  const g = Math.round(255 - t * 160);
+  const ink = t > 0.62 ? '#fff' : '#1c2416';
+  return `style="background:rgb(${g},${g},${g});color:${ink}" class="cell ${extra || ''}"`;
+}
+function drawHeat(canvas, matrix) {
+  const h = matrix.length, w = matrix[0].length;
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const im = ctx.createImageData(w, h);
+  const { mn, mx } = rangeOf(matrix);
+  const span = mx - mn || 1;
+  let p = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const g = Math.round((matrix[y][x] - mn) / span * 255);
+    im.data[p++] = g; im.data[p++] = Math.round(g * 0.98 + 8); im.data[p++] = Math.round(g * 0.9); im.data[p++] = 255;
+  }
+  ctx.putImageData(im, 0, 0);
+  return { mn, mx };
+}
+function applyHead(conv) {
+  return conv.map(row => row.map(v => {
+    let z = v + Lab.bias;
+    if (Lab.relu) z = Math.max(0, z);
+    return z;
+  }));
+}
+
+function renderKernelEditor() {
+  const ed = $('#kEditor');
+  ed.style.gridTemplateColumns = `repeat(${Lab.kernel[0].length}, 52px)`;
+  ed.innerHTML = Lab.kernel.map((row, i) => row.map((v, j) =>
+    `<input data-i="${i}" data-j="${j}" type="number" step="0.5" value="${v}" class="kcell w-12 border border-sage rounded px-1 py-1 text-center" aria-label="Peso fila ${i + 1} columna ${j + 1}">`
+  ).join('')).join('');
+  ed.querySelectorAll('.kcell').forEach(inp => inp.addEventListener('input', () => {
+    const v = parseFloat(inp.value);
+    Lab.kernel[+inp.dataset.i][+inp.dataset.j] = Number.isFinite(v) ? v : 0;
+    $('#kPreset').value = 'custom';
+    Lab.step = 0;
+    renderMaps();
+  }));
+}
+function renderMaps() {
+  const kh = Lab.kernel.length, kw = Lab.kernel[0].length;
+  const h = Lab.img.length, w = Lab.img[0].length;
+  const oh = outSize(h, kh, Lab.pad, Lab.stride), ow = outSize(w, kw, Lab.pad, Lab.stride);
+  const raw = oh && ow ? convolve(Lab.img, Lab.kernel, Lab.pad, Lab.stride) : [];
+  const out = raw.length ? applyHead(raw) : [];
+  const total = oh * ow;
+  if (Lab.step >= total) Lab.step = 0;
+  const si = total ? Math.floor(Lab.step / ow) : 0;
+  const sj = total ? Lab.step % ow : 0;
+  $('#labPadOut').textContent = Lab.pad;
+  $('#labStrideOut').textContent = Lab.stride;
+  const fits = oh > 0 && ow > 0;
+  const fh = fits ? `⌊(${h} + 2·${Lab.pad} − ${kh}) / ${Lab.stride}⌋ + 1 = ${oh}` : 'el kernel no cabe';
+  const fw = fits ? `⌊(${w} + 2·${Lab.pad} − ${kw}) / ${Lab.stride}⌋ + 1 = ${ow}` : 'el kernel no cabe';
+  $('#labFormula').textContent = `Alto: ${fh}    ·    Ancho: ${fw}`;
+  const classic = same(out, [[19, 25], [37, 43]]) && Lab.bias === 0 && !Lab.relu;
+  const edgeRow = out.length === 6 && out.every(r => same([r], [[0, 1, 0, 0, 0, -1, 0]]));
+  let note = Lab.note;
+  if (classic) note = 'La salida es 19, 25, 37 y 43.';
+  if (edgeRow && Lab.bias === 0 && !Lab.relu) note = 'Cada fila sale 0, 1, 0, 0, 0, −1, 0.';
+  $('#labNote').innerHTML = note ? `<span class="font-semibold text-inst">${esc(note)}</span>` : '';
+
+  const H = h + 2 * Lab.pad, W = w + 2 * Lab.pad;
+  const { mn, mx } = rangeOf(Lab.img);
+  let htmlIn = `<div class="pxgrid" style="grid-template-columns:repeat(${W},38px)">`;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const iy = y - Lab.pad, ix = x - Lab.pad;
+    const isPad = iy < 0 || ix < 0 || iy >= h || ix >= w;
+    const val = isPad ? 0 : Lab.img[iy][ix];
+    const inWin = fits && y >= si * Lab.stride && y < si * Lab.stride + kh && x >= sj * Lab.stride && x < sj * Lab.stride + kw;
+    htmlIn += `<div ${cellStyle(isPad ? mn : val, mn, mx, (isPad ? 'pad' : '') + (inWin ? ' on' : ''))}>${fmt(val)}</div>`;
+  }
+  htmlIn += '</div>';
+  $('#gridIn').innerHTML = htmlIn;
+
+  if (!fits) {
+    $('#gridOut').innerHTML = '<p class="text-sm">Con este padding y este salto el kernel no entra ni una vez. Sube el relleno o baja el salto.</p>';
+    $('#labMath').textContent = '';
+  } else {
+    const { mn: a, mx: b } = rangeOf(out);
+    let htmlOut = `<div class="pxgrid" style="grid-template-columns:repeat(${ow},38px)">`;
+    for (let i = 0; i < oh; i++) for (let j = 0; j < ow; j++) {
+      const cur = i === si && j === sj;
+      htmlOut += `<button type="button" data-i="${i}" data-j="${j}" ${cellStyle(out[i][j], a, b, cur ? 'hit' : '')}>${fmt(out[i][j])}</button>`;
+    }
+    htmlOut += '</div>';
+    $('#gridOut').innerHTML = htmlOut;
+    $('#gridOut').querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+      Lab.step = (+btn.dataset.i) * ow + (+btn.dataset.j);
+      renderMaps();
+    }));
+    const parts = [];
+    for (let u = 0; u < kh; u++) for (let v = 0; v < kw; v++) {
+      const y = si * Lab.stride + u - Lab.pad, x = sj * Lab.stride + v - Lab.pad;
+      const pix = (y < 0 || x < 0 || y >= h || x >= w) ? 0 : Lab.img[y][x];
+      parts.push(`${fmt(pix)}×${fmt(Lab.kernel[u][v])}`);
+    }
+    const reluTxt = Lab.relu ? ` ReLU deja ${fmt(out[si][sj])}.` : '';
+    $('#labMath').innerHTML = `<b>Ventana ${Lab.step + 1} de ${total}.</b> ${parts.join(' + ')} = ${fmt(raw[si][sj])}. Más sesgo ${fmt(Lab.bias)} da ${fmt(raw[si][sj] + Lab.bias)}.${reluTxt}`;
+  }
+
+  const base = Lab.fine || Lab.img;
+  const maps = [
+    ['Tu kernel', Lab.kernel],
+    ['Borde vertical', KERNELS.sobelV],
+    ['Borde horizontal', KERNELS.sobelH],
+    ['Realce', KERNELS.sharp]
+  ];
+  $('#heatRow').innerHTML = maps.map((m, i) => `<figure><canvas id="heat${i}" class="heat" width="8" height="8"></canvas><figcaption class="text-xs mt-1 text-center">${m[0]}</figcaption></figure>`).join('');
+  maps.forEach((m, i) => {
+    const conv = applyHead(convolve(base, m[1], Lab.pad, Lab.stride));
+    const canvas = document.getElementById('heat' + i);
+    if (conv.length && conv[0].length) drawHeat(canvas, conv);
+  });
+}
+function setKernel(name) {
+  Lab.kernel = cloneK(KERNELS[name]);
+  $('#kPreset').value = name;
+  renderKernelEditor();
+}
+function loadPreset(name) {
+  const p = PRESETS[name];
+  Lab.img = p.img.map(r => r.slice());
+  Lab.fine = null;
+  Lab.pad = p.pad; Lab.stride = p.stride; Lab.bias = 0; Lab.relu = false; Lab.step = 0;
+  Lab.note = p.note;
+  $('#labPad').value = p.pad; $('#labStride').value = p.stride; $('#labBias').value = 0; $('#labRelu').checked = false;
+  setKernel(p.kernel);
+  renderMaps();
+}
+$('#kPreset').addEventListener('change', () => {
+  if ($('#kPreset').value === 'custom') return;
+  setKernel($('#kPreset').value);
+  Lab.step = 0; Lab.note = '';
+  renderMaps();
+});
+$('#labPad').addEventListener('input', () => { Lab.pad = +$('#labPad').value; Lab.step = 0; Lab.note = ''; renderMaps(); });
+$('#labStride').addEventListener('input', () => { Lab.stride = +$('#labStride').value; Lab.step = 0; Lab.note = ''; renderMaps(); });
+$('#labBias').addEventListener('input', () => { const v = parseFloat($('#labBias').value); Lab.bias = Number.isFinite(v) ? v : 0; Lab.note = ''; renderMaps(); });
+$('#labRelu').addEventListener('change', () => { Lab.relu = $('#labRelu').checked; Lab.note = ''; renderMaps(); });
+$('#labPrev').addEventListener('click', () => {
+  const ow = outSize(Lab.img[0].length, Lab.kernel[0].length, Lab.pad, Lab.stride);
+  const oh = outSize(Lab.img.length, Lab.kernel.length, Lab.pad, Lab.stride);
+  const t = oh * ow; if (!t) return;
+  Lab.step = (Lab.step - 1 + t) % t; renderMaps();
+});
+$('#labNext').addEventListener('click', () => {
+  const ow = outSize(Lab.img[0].length, Lab.kernel[0].length, Lab.pad, Lab.stride);
+  const oh = outSize(Lab.img.length, Lab.kernel.length, Lab.pad, Lab.stride);
+  const t = oh * ow; if (!t) return;
+  Lab.step = (Lab.step + 1) % t; renderMaps();
+});
+document.querySelectorAll('.preset').forEach(b => b.addEventListener('click', () => loadPreset(b.dataset.preset)));
+
+function imageToMatrix(image, size) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0, size, size);
+  const d = ctx.getImageData(0, 0, size, size).data;
+  const m = [];
+  for (let y = 0; y < size; y++) {
+    const row = [];
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      row.push(Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]));
+    }
+    m.push(row);
+  }
+  return m;
+}
+function usePhoto(image, label) {
+  try {
+    Lab.img = imageToMatrix(image, 12);
+    Lab.fine = imageToMatrix(image, 80);
+  } catch (err) {
+    $('#clsStatus').textContent = 'El navegador no pudo leer los píxeles de esa imagen. Súbela desde tu equipo.';
+    return;
+  }
+  Lab.pad = 1; Lab.stride = 1; Lab.bias = 0; Lab.relu = false; Lab.step = 0;
+  Lab.note = label + '. La cuadrícula es la foto reducida a 12×12, en gris de 0 a 255. Los mapas de abajo usan 80×80.';
+  $('#labPad').value = 1; $('#labStride').value = 1; $('#labBias').value = 0; $('#labRelu').checked = false;
+  setKernel('sobelV');
+  renderMaps();
+  const prev = $('#previewImg');
+  prev.classList.remove('hidden');
+  currentClsImage = image;
+  $('#btnCls').disabled = false;
+  $('#clsStatus').textContent = label + '. Ya puedes clasificarla, o mirar primero los mapas del laboratorio.';
+}
+$('#fileLab').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) readFile(f); });
+
+let currentClsImage = null;
+let modelPromise = null;
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.async = true; s.onload = resolve; s.onerror = () => reject(new Error('No se pudo cargar ' + src));
+    document.head.appendChild(s);
+  });
+}
+function getModel() {
+  if (!modelPromise) {
+    modelPromise = (async () => {
+      if (!window.tf) await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');
+      if (!window.mobilenet) await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js');
+      return mobilenet.load({ version: 2, alpha: 1 });
+    })().catch(err => { modelPromise = null; throw err; });
+  }
+  return modelPromise;
+}
+function readFile(file) {
+  if (!file.type.startsWith('image/')) { $('#clsStatus').textContent = 'Ese archivo no es una imagen.'; return; }
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const prev = $('#previewImg');
+    prev.onload = () => usePhoto(prev, file.name);
+    prev.crossOrigin = 'anonymous';
+    prev.src = url;
+    prev.alt = 'Foto cargada: ' + file.name;
+  };
+  img.onerror = () => { $('#clsStatus').textContent = 'No se pudo abrir esa imagen.'; };
+  img.src = url;
+}
+function loadSample(url, name) {
+  $('#clsStatus').textContent = 'Descargando el ejemplo…';
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const prev = $('#previewImg');
+    prev.crossOrigin = 'anonymous';
+    prev.alt = name;
+    prev.onload = () => usePhoto(prev, name);
+    prev.src = url;
+  };
+  img.onerror = () => { $('#clsStatus').textContent = 'No se pudo descargar el ejemplo. Revisa la conexión o sube una foto tuya.'; };
+  img.src = url;
+}
+$('#fileCls').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) readFile(f); });
+document.querySelectorAll('.sample').forEach(b => b.addEventListener('click', () => loadSample(b.dataset.url, b.dataset.name)));
+const drop = $('#dropZone');
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) readFile(f); });
+
+$('#btnCls').addEventListener('click', async () => {
+  if (!currentClsImage) return;
+  const status = $('#clsStatus');
+  const box = $('#clsResult');
+  status.textContent = 'Descargando MobileNetV2 y clasificando. La primera vez puede tardar un minuto.';
+  $('#btnCls').disabled = true;
+  try {
+    const model = await getModel();
+    const preds = await model.classify(currentClsImage, 5);
+    const top = preds[0];
+    const low = top.probability < 0.2;
+    box.className = 'rounded-xl border border-sage p-4 text-sm';
+    box.innerHTML = preds.map((p, i) => `
+      <div class="mb-2">
+        <div class="flex justify-between gap-3"><span><b>${i + 1}.</b> ${esc(p.className)}</span><span>${(p.probability * 100).toFixed(1)} %</span></div>
+        <div class="bar mt-1"><span style="width:${Math.max(2, p.probability * 100)}%"></span></div>
+      </div>`).join('') + (low
+      ? '<p class="mt-2">La probabilidad más alta es baja. La red reparte su duda entre varias clases de ImageNet. Una foto más cercana, con el objeto grande, suele concentrar la probabilidad.</p>'
+      : '<p class="mt-2">El nombre está en inglés porque así está etiquetado ImageNet. La barra es la probabilidad que softmax asigna a esa clase.</p>');
+    status.textContent = 'Listo. Clase más probable: ' + top.className + ' (' + (top.probability * 100).toFixed(1) + ' %).';
+  } catch (err) {
+    box.className = 'rounded-xl border border-red-300 bg-red-50 p-4 text-sm';
+    box.textContent = 'No se pudo clasificar. Hace falta internet la primera vez para bajar los pesos, y la página tiene que poder leer la imagen. Prueba de nuevo o sube la foto desde tu equipo.';
+    status.textContent = 'La clasificación no se completó.';
+  } finally {
+    $('#btnCls').disabled = !currentClsImage;
+  }
+});
+
+function renderSize() {
+  const n = +$('#sizeN').value, k = +$('#sizeK').value, p = +$('#sizeP').value, s = +$('#sizeS').value;
+  const box = $('#sizeOut');
+  if (![n, k, p, s].every(Number.isFinite) || n < 1 || k < 1 || p < 0 || s < 1) {
+    box.textContent = 'Usa enteros: n y k desde 1, p desde 0 y s desde 1.';
+    return;
+  }
+  const y = outSize(n, k, p, s);
+  const pTotal = 2 * p;
+  const d2l = y > 0 ? Math.floor((n - k + pTotal + s) / s) : 0;
+  box.innerHTML = y > 0
+    ? `<p class="font-semibold text-inst text-lg">Salida ${y}×${y}</p>
+       <p class="formula mt-2">PyTorch: ⌊(${n} + 2·${p} − ${k}) / ${s}⌋ + 1 = ${y}</p>
+       <p class="formula mt-2">Con p total = ${pTotal} (los dos lados juntos): ⌊(${n} − ${k} + ${pTotal} + ${s}) / ${s}⌋ = ${d2l}</p>
+       <p class="mt-2">Las dos convenciones dan el mismo lado. Si el kernel no fuera cuadrado, la cuenta se hace una vez para el alto y otra para el ancho.</p>`
+    : `<p>Con n = ${n}, k = ${k}, p = ${p} y s = ${s} el kernel no entra. La salida tendría lado 0.</p>`;
+}
+['sizeN', 'sizeK', 'sizeP', 'sizeS'].forEach(id => document.getElementById(id).addEventListener('input', renderSize));
+
+function renderParams() {
+  const cin = +$('#paramCin').value, cout = +$('#paramCout').value, k = +$('#paramK').value;
+  const box = $('#paramOut');
+  if (![cin, cout, k].every(v => Number.isInteger(v) && v >= 1)) {
+    box.textContent = 'Canales y kernel tienen que ser enteros mayores que 0.';
+    return;
+  }
+  const params = cout * (cin * k * k + 1);
+  const known = cin === 3 && cout === 64 && k === 3;
+  const miles = String(params).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+  box.innerHTML = `<b>${miles} parámetros.</b> ${cout} × (${cin} × ${k} × ${k} + 1). ${known ? 'De RGB a 64 canales con kernel 3×3 hay 1 792 pesos. El número no cambia si la foto es de 28×28 o de 2 000×2 000.' : 'El mismo kernel recorre toda la foto, así que agrandar la imagen no agranda esta cuenta.'}`;
+}
+['paramCin', 'paramCout', 'paramK'].forEach(id => document.getElementById(id).addEventListener('input', renderParams));
+
+const POOL_IMG = [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]];
+function renderPool() {
+  const win = +$('#poolWin').value, pad = +$('#poolPad').value, st = +$('#poolStride').value, mode = $('#poolMode').value;
+  const box = $('#poolOut');
+  if (![win, pad, st].every(Number.isInteger) || win < 1 || pad < 0 || st < 1) {
+    box.textContent = 'Ventana, padding y stride tienen que ser enteros. La ventana y el stride empiezan en 1.';
+    return;
+  }
+  const { out } = pool(POOL_IMG, win, pad, st, mode);
+  if (!out.length) { box.textContent = 'La ventana no cabe. Baja la ventana o sube el padding.'; return; }
+  const text = out.map(r => r.map(fmt).join(', ')).join(' | ');
+  let extra = '';
+  if (mode === 'max' && win === 3 && pad === 0 && st === 3 && same(out, [[10]])) extra = ' La única ventana vale 10.';
+  if (mode === 'max' && win === 3 && pad === 1 && st === 2 && same(out, [[5, 7], [13, 15]])) extra = ' La salida es [[5, 7], [13, 15]].';
+  box.innerHTML = `<p class="formula">${text}</p><p class="mt-2">Forma ${out.length}×${out[0].length}. ${mode === 'max' ? 'Cada celda es el máximo de su ventana.' : 'Cada celda es el promedio, y los ceros del relleno entran en la división.'}${extra}</p>`;
+}
+['poolWin', 'poolPad', 'poolStride', 'poolMode'].forEach(id => document.getElementById(id).addEventListener('input', renderPool));
+$('#poolMode').addEventListener('change', renderPool);
+$('#poolEj1').addEventListener('click', () => { $('#poolWin').value = 3; $('#poolPad').value = 0; $('#poolStride').value = 3; $('#poolMode').value = 'max'; renderPool(); });
+$('#poolEj2').addEventListener('click', () => { $('#poolWin').value = 3; $('#poolPad').value = 1; $('#poolStride').value = 2; $('#poolMode').value = 'max'; renderPool(); });
+
+function loss(x) { return 0.15 * x ** 4 - 0.8 * x * x + 0.2 * x; }
+function grad(x) { return 0.6 * x ** 3 - 1.6 * x + 0.2; }
+const Opt = { name: 'sgd', lr: 0.15, x0: 2.1, x: 2.1, v: 0, m: 0, s: 0, t: 0, path: [2.1], timer: null, dead: false };
+function optReset() {
+  clearInterval(Opt.timer); Opt.timer = null;
+  Opt.x = Opt.x0; Opt.v = 0; Opt.m = 0; Opt.s = 0; Opt.t = 0; Opt.path = [Opt.x0]; Opt.dead = false;
+  optDraw();
+}
+function optStep() {
+  if (Opt.dead) return;
+  const g = grad(Opt.x);
+  Opt.t += 1;
+  if (Opt.name === 'sgd') Opt.x -= Opt.lr * g;
+  else if (Opt.name === 'mom') { Opt.v = 0.9 * Opt.v + g; Opt.x -= Opt.lr * Opt.v; }
+  else if (Opt.name === 'rms') { Opt.s = 0.9 * Opt.s + 0.1 * g * g; Opt.x -= Opt.lr * g / (Math.sqrt(Opt.s) + 1e-8); }
+  else {
+    Opt.m = 0.9 * Opt.m + 0.1 * g;
+    Opt.s = 0.999 * Opt.s + 0.001 * g * g;
+    const mh = Opt.m / (1 - 0.9 ** Opt.t), sh = Opt.s / (1 - 0.999 ** Opt.t);
+    Opt.x -= Opt.lr * mh / (Math.sqrt(sh) + 1e-8);
+  }
+  if (!Number.isFinite(Opt.x) || Math.abs(Opt.x) > 4) { Opt.dead = true; clearInterval(Opt.timer); Opt.timer = null; }
+  else Opt.path.push(Opt.x);
+  optDraw();
+}
+function optDraw() {
+  const canvas = $('#optCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.clientWidth || 640, H = 280;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const xmin = -2.6, xmax = 2.6;
+  let ymin = Infinity, ymax = -Infinity;
+  for (let i = 0; i <= 80; i++) { const y = loss(xmin + (xmax - xmin) * i / 80); if (y < ymin) ymin = y; if (y > ymax) ymax = y; }
+  ymin -= 0.2; ymax += 0.35;
+  const X = x => 36 + (x - xmin) / (xmax - xmin) * (W - 52);
+  const Y = y => 16 + (ymax - y) / (ymax - ymin) * (H - 42);
+  ctx.beginPath();
+  for (let i = 0; i <= 200; i++) {
+    const x = xmin + (xmax - xmin) * i / 200;
+    i ? ctx.lineTo(X(x), Y(loss(x))) : ctx.moveTo(X(x), Y(loss(x)));
+  }
+  ctx.strokeStyle = '#385723'; ctx.lineWidth = 2.4; ctx.stroke();
+  ctx.strokeStyle = '#8A8A8A'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(36, Y(0)); ctx.lineTo(W - 16, Y(0)); ctx.stroke();
+  ctx.fillStyle = '#5f6b57'; ctx.font = '12px Inter, Arial, sans-serif'; ctx.textAlign = 'center';
+  for (let x = -2; x <= 2; x++) ctx.fillText(String(x), X(x), H - 8);
+  ctx.strokeStyle = '#70AD47'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  Opt.path.forEach((x, i) => { const y = loss(Math.max(xmin, Math.min(xmax, x))); i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)); });
+  ctx.stroke();
+  const x = Math.max(xmin, Math.min(xmax, Opt.x));
+  ctx.fillStyle = '#9B3A32';
+  ctx.beginPath(); ctx.arc(X(x), Y(loss(x)), 6, 0, Math.PI * 2); ctx.fill();
+  const msg = Opt.dead
+    ? `El peso se fue a ${fmt(Opt.x)}. Con este α el paso es tan grande que sale del valle. Baja la tasa o cambia de optimizador.`
+    : `Paso ${Opt.t}. Peso w = ${fmt(Opt.x)}. Pérdida = ${fmt(loss(Opt.x))}. ${Opt.x < 0 ? 'Está del lado del valle más bajo.' : 'Está del lado del valle de la derecha, que es más alto.'}`;
+  $('#optRead').textContent = msg;
+}
+$('#optName').addEventListener('change', e => { Opt.name = e.target.value; optReset(); });
+$('#optLr').addEventListener('input', e => { Opt.lr = +e.target.value; $('#optLrOut').textContent = Opt.lr.toFixed(2); optReset(); });
+$('#optX0').addEventListener('input', e => { Opt.x0 = +e.target.value; $('#optX0Out').textContent = Opt.x0.toFixed(2); optReset(); });
+$('#optPlay').addEventListener('click', () => {
+  if (Opt.timer) { clearInterval(Opt.timer); Opt.timer = null; $('#optPlay').textContent = 'Animar'; return; }
+  if (Opt.dead) optReset();
+  $('#optPlay').textContent = 'Pausa';
+  Opt.timer = setInterval(() => { optStep(); if (!Opt.timer) $('#optPlay').textContent = 'Animar'; }, 140);
+});
+$('#optReset').addEventListener('click', () => { $('#optPlay').textContent = 'Animar'; optReset(); });
+if ('ResizeObserver' in window) new ResizeObserver(() => optDraw()).observe($('#optCanvas'));
+
+function barajar(lista) {
+  const a = lista.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = a[i];
+    a[i] = a[j];
+    a[j] = t;
+  }
+  return a;
+}
+const caso = [
+  { t: '1 · Qué modelo conviene de entrada', q: 'La tienda tiene fotos de 28×28. ¿Qué se gana al pasar de una MLP a una CNN, antes de tocar el optimizador?', o: [
+    ['Un kernel compartido recorre las vecindades y así la red conserva qué píxeles se tocan.', true, 'La arquitectura aprovecha la foto. Después hace falta entrenarla bien: una CNN con un paso mal elegido no saca partido de ese diseño.'],
+    ['Cada píxel recibe un peso propio, de modo que la CNN pide más parámetros que la capa densa.', false, 'El kernel se reutiliza en todas las posiciones. Por eso el número de pesos no crece con el alto y el ancho de la foto.'],
+    ['Al estirar la foto en un vector, la capa densa conserva qué píxeles eran vecinos entre sí.', false, 'Al estirar 28×28 a 784, la capa densa deja de saber qué píxeles se tocan.']
+  ]},
+  { t: '2 · La tasa de aprendizaje', q: 'Con SGD, una α diminuta casi no mueve la pérdida, una α adecuada baja en pocas épocas y una α enorme deja la exactitud cerca de adivinar entre las 10 prendas. ¿Qué lectura es la correcta?', o: [
+    ['Hay un rango útil: una α chica gasta épocas y una α enorme se sale del valle.', true, 'Es la curva en U de la tasa. La tasa se juzga con la pérdida y con datos de validación, no con la memoria de la GPU.'],
+    ['La α más grande siempre llega más lejos, porque el primer paso ya avanza mucho más.', false, 'Un paso enorme puede salir del valle. Después la red ya no clasifica mejor que el azar.'],
+    ['La α correcta es la que deja el p-valor más chico, como en una prueba de hipótesis.', false, 'Aquí no hay una prueba de hipótesis. α se elige mirando la pérdida y la exactitud de validación, con datos que no se usaron para ajustar los pesos.']
+  ]},
+  { t: '3 · Qué optimizador', q: 'La tienda quiere un primer entrenamiento esta semana. ¿Con qué optimizador conviene arrancar?', o: [
+    ['Arranca con Adam o AdamW. SGD compite si lleva momentum y un calendario, con otra α.', true, 'Adam junta momentum y RMSprop. Es el punto de partida. Si no converge, el siguiente intento es SGD con momentum.'],
+    ['Corre Adam y SGD con la misma α: solo así la comparación es justa y se elige un ganador.', false, 'Cada optimizador tiene su escala de α. Copiar el número de uno al otro no es una comparación justa.'],
+    ['Adam ya regulariza solo, así que sobran el dropout y un conjunto de validación aparte.', false, 'Adam acelera el descenso. La brecha entre entrenamiento y validación se mira igual, y dropout o weight decay siguen haciendo falta si la red memoriza.']
+  ]},
+  { t: '4 · Qué mira la primera capa', q: 'Una foto nueva trae la camisa un poco corrida a la derecha. ¿Qué pieza de la CNN aguanta ese desplazamiento?', o: [
+    ['El kernel compartido y el max pooling conservan el rasgo si la camisa se corre un poco.', true, 'Eso es la invarianza a la traslación de las primeras capas, más la tolerancia del máximo. No hace falta un peso nuevo para cada columna.'],
+    ['Hay que aplanar la foto para que la capa densa memorice la columna exacta de la prenda.', false, 'Eso ata el rasgo a una posición. Una camisa corrida cae en otros pesos.'],
+    ['Conviene quitar el padding: así el borde no pesa y el desplazamiento deja de mover el rasgo.', false, 'Sin padding el borde se usa poco y la imagen se encoge en cada capa. El desplazamiento se atiende con pesos compartidos y pooling.']
+  ]},
+  { t: '5 · Qué se le dice a la tienda', q: 'La red etiqueta solo. Camiseta, suéter, abrigo y camisa se parecen; pantalón, bolso y el calzado no. ¿Qué informe es honesto?', o: [
+    ['La CNN acelera el etiquetado, y si duda entre prendas de arriba una persona debe revisar.', true, 'La silueta parecida explica la confusión. El modelo no cierra solo los casos ambiguos. La exactitud se informa junto con qué clases se mezclan.'],
+    ['Si la exactitud de entrenamiento ya es alta, se publica toda la ropa sin revisión humana.', false, 'El entrenamiento puede memorizar. La decisión usa la validación y, sobre todo, las clases que se confunden.'],
+    ['Una MLP con más pesos separa mejor camisa y camiseta, porque tiene más capacidad de ajuste.', false, 'Más pesos no reparan la pérdida de la vecindad entre píxeles. La confusión viene de siluetas parecidas, y se mira en la validación.']
+  ]}
+];
+caso.forEach(c => { c.o = barajar(c.o); });
+let casoNivel = 0;
+function renderCaso() {
+  $('#casoSteps').innerHTML = caso.map((c, i) => {
+    if (i > casoNivel) return `<div class="rounded-xl border border-dashed border-sage p-3 text-sm text-moss">Paso bloqueado · ${c.t}</div>`;
+    return `<div class="rounded-xl border border-sage p-4">
+      <p class="text-xs uppercase tracking-wider text-leaf font-semibold">${c.t}</p>
+      <p class="font-semibold mt-1">${c.q}</p>
+      <div class="grid gap-2 mt-3">${c.o.map((o, j) => `<button type="button" class="opt casoOpt text-sm" data-i="${i}" data-j="${j}">${o[0]}</button>`).join('')}</div>
+      <p class="text-sm mt-2" id="casofb${i}" aria-live="polite"></p>
+    </div>`;
+  }).join('') + (casoNivel >= caso.length ? '<div class="rounded-xl p-4 text-sm" style="background:#E2F0D9"><b class="text-inst">Caso cerrado.</b> La CNN conserva la vecindad de la foto. La tasa, el optimizador y la regularización deciden si ese diseño llega a servirle a la tienda.</div>' : '');
+  document.querySelectorAll('.casoOpt').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.i, j = +b.dataset.j, o = caso[i].o[j];
+    b.classList.add(o[1] ? 'ok' : 'bad');
+    $('#casofb' + i).innerHTML = (o[1] ? '<b class="text-inst">Bien. </b>' : '<b class="text-rech">Esa lectura no cierra. </b>') + o[2];
+    if (o[1] && casoNivel === i) {
+      document.querySelectorAll(`.casoOpt[data-i="${i}"]`).forEach(x => x.disabled = true);
+      setTimeout(() => {
+        casoNivel++;
+        const fb = $('#casofb' + i).innerHTML;
+        renderCaso();
+        const slot = $('#casofb' + i);
+        if (slot) slot.innerHTML = fb;
+        document.querySelectorAll(`.casoOpt[data-i="${i}"]`).forEach((x, k) => { x.disabled = true; if (caso[i].o[k][1]) x.classList.add('ok'); });
+      }, 700);
+    }
+  }));
+}
+
+const quiz = [
+  { q: 'Una foto de 1 000×1 000 entra a una capa densa de 1 000 neuronas. ¿Por qué conviene pasar a una convolución?', o: [
+    ['Harían falta cerca de mil millones de pesos y, al aplanar, se pierde la vecindad.', true, 'Un kernel pequeño compartido baja las dos cuentas: menos pesos y se conserva la localidad.'],
+    ['Una CNN siempre trae más parámetros que una capa densa, y por eso aprende mejor.', false, 'La razón es la contraria: muchos menos pesos, con una estructura que sí usa la vecindad.'],
+    ['La convolución quita la función de pérdida, así que la red ya no necesita entrenarse.', false, 'La CNN se entrena igual, con pérdida y descenso de gradiente. Cambia cómo se conectan los pesos.']
+  ]},
+  { q: 'Entrada 8×8, kernel 3×3, padding 1 por lado, stride 2. ¿Cuál es el lado de la salida?', o: [
+    ['El lado queda en 4: ⌊(8 + 2·1 − 3) / 2⌋ + 1, con el relleno sumado en la fórmula.', true, 'Si p cuenta los dos lados juntos, el total es 2 y la cuenta ⌊(8 − 3 + 2 + 2) / 2⌋ también da 4.'],
+    ['El lado sigue en 8: un padding same conserva el tamaño aunque el salto sea 2.', false, 'Con stride 1 y p = (k − 1) / 2 el tamaño se conserva. Aquí el salto es 2, así que el lado baja a 4.'],
+    ['El lado queda en 3: ⌊(8 − 3) / 2⌋ + 1, porque el relleno no entra en esa cuenta.', false, 'El relleno sí entra: n + 2p. Sin él la cuenta sería otra.']
+  ]},
+  { q: '¿Cuántos parámetros tiene una convolución de 3 canales a 64, con kernel 3×3 y sesgo?', o: [
+    ['Son 1 792: 64 × (3 × 3 × 3 + 1), y no cambia si la foto es grande o chica.', true, 'Cada canal de salida suma los tres planos de entrada y agrega un sesgo. El kernel se repite en todas las posiciones.'],
+    ['Son 64 × 3 × alto × ancho, porque cada píxel de la foto tiene su propio peso.', false, 'Esa cuenta sería la de una capa densa. En la convolución el peso no depende del alto ni del ancho.'],
+    ['Son 9: 3 × 3, porque toda la capa usa un solo kernel y el sesgo no se cuenta.', false, 'Hay un kernel por cada par de canal de salida y canal de entrada, más los sesgos.']
+  ]},
+  { q: '¿Qué hace el max pooling de 2×2 con stride 2?', o: [
+    ['Toma el mayor de cada ventana, no aprende pesos y deja el lado de la imagen a la mitad.', true, 'Da tolerancia a un desplazamiento chico y baja la resolución. El número de canales sigue igual.'],
+    ['Multiplica cada ventana por un kernel que se aprende y suma, igual que la convolución.', false, 'Eso es la convolución. El pooling no tiene pesos.'],
+    ['Apaga neuronas al azar mientras entrena, para que la red no memorice la foto de entrada.', false, 'Eso es dropout, y solo durante el entrenamiento.']
+  ]},
+  { q: 'Una α diminuta casi no mueve la pérdida y una α enorme deja el entrenamiento cerca del azar. ¿Qué se concluye?', o: [
+    ['El paso tiene un rango útil: por debajo se gastan épocas y por encima se sale del valle.', true, 'Adam y RMSprop mueven ese rango porque cada peso lleva su propio paso, pero tampoco dispensan de mirar la validación.'],
+    ['Hay que usar la α más grande que quepa en memoria, porque así el entrenamiento va más rápido.', false, 'La memoria limita el tamaño del lote. La tasa se juzga por la curva de pérdida.'],
+    ['Si sube la exactitud de entrenamiento, la de validación sube en la misma medida y a la par.', false, 'Sin regularizar, el entrenamiento puede seguir mejorando mientras la validación se estanca. Las dos curvas se leen juntas.']
+  ]},
+  { q: 'Batch norm y dropout atacan cosas distintas. ¿Cómo se combinan?', o: [
+    ['Batch norm estabiliza la escala y dropout achica la brecha entre entrenar y validar.', true, 'Batch norm no reemplaza la regularización: puede acelerar y, a la vez, dejar que la red memorice. Dropout es el que ataca esa brecha.'],
+    ['Los dos apagan neuronas al azar, así que con uno de ellos el otro ya no hace falta.', false, 'Batch norm reescala activaciones. Dropout pone neuronas en cero al azar.'],
+    ['Con batch norm ya no importan ni la inicialización de He ni la ReLU de las capas ocultas.', false, 'Ayuda, y igual se usan He y ReLU. En una red honda con sigmoide el gradiente de las primeras capas puede desaparecer.']
+  ]}
+];
+function renderQuiz() {
+  quiz.forEach(x => { x.o = barajar(x.o); });
+  $('#quizBox').innerHTML = quiz.map((x, i) => `
+    <fieldset class="rounded-xl border border-sage p-4">
+      <legend class="px-1 text-xs uppercase tracking-wider text-leaf font-semibold">Pregunta ${i + 1} de ${quiz.length}</legend>
+      <p class="font-medium">${x.q}</p>
+      <div class="grid gap-2 mt-3">${x.o.map((o, j) => `<button type="button" class="opt qOpt text-sm" data-i="${i}" data-j="${j}">${String.fromCharCode(65 + j)}) ${o[0]}</button>`).join('')}</div>
+      <p class="text-sm mt-2" id="qfb${i}" aria-live="polite"></p>
+    </fieldset>`).join('');
+  $('#quizEnd').style.display = 'none';
+  $('#quizScoreTop').textContent = `Puntaje: 0 / ${quiz.length}`;
+  const qState = quiz.map(() => null);
+  document.querySelectorAll('.qOpt').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.i, j = +b.dataset.j;
+    if (qState[i] !== null) return;
+    const o = quiz[i].o[j];
+    qState[i] = o[1];
+    document.querySelectorAll(`.qOpt[data-i="${i}"]`).forEach((x, k) => { x.disabled = true; if (quiz[i].o[k][1]) x.classList.add('ok'); });
+    if (!o[1]) b.classList.add('bad');
+    const correcta = quiz[i].o.find(z => z[1]);
+    $('#qfb' + i).innerHTML = o[1] ? `<b class="text-inst">Bien.</b> ${o[2]}` : `<b class="text-rech">Esa no es la lectura.</b> ${o[2]}<br><span class="text-moss"><b>Respuesta:</b> ${correcta[0]}</span>`;
+    const score = qState.filter(v => v === true).length;
+    $('#quizScoreTop').textContent = `Puntaje: ${score} / ${quiz.length}`;
+    if (qState.every(v => v !== null)) {
+      const end = $('#quizEnd');
+      end.style.display = 'block';
+      const msg = score === 6 ? ['Recorrido completo', 'Puedes explicar el kernel, la fórmula del tamaño y cómo se elige el paso y la regularización.', 'border-lime bg-mint']
+        : score >= 4 ? ['Buen avance', 'Vuelve a la ventana que falló: el laboratorio muestra la cuenta, y el caso junta la foto con el entrenamiento.', 'border-lime bg-mint']
+        : ['Conviene repetir el recorrido', 'Pasa otra vez por el kernel, por padding y stride, y por la pestaña de optimizadores.', 'border-amber-400 bg-amber-50'];
+      end.className = 'mt-5 rounded-xl p-4 border-2 ' + msg[2];
+      end.innerHTML = `<p class="font-bold text-lg">${msg[0]} — ${score} de ${quiz.length}</p><p class="text-sm mt-1">${msg[1]}</p>`;
+    }
+  }));
+}
+$('#quizReset').addEventListener('click', () => { renderQuiz(); document.getElementById('quiz').scrollIntoView(); });
+
+const errores = [
+  ['"Padding y stride son dos nombres del mismo relleno."', 'El padding agrega ceros en el borde para que la ventana pueda nacer en la esquina. El stride es el salto hasta la ventana siguiente. Uno agranda la salida posible; el otro la achica.'],
+  ['"En todos los textos y en PyTorch la p de padding vale lo mismo."', 'En algunos textos, p es el total de los dos lados. En PyTorch, padding es la cantidad de un solo lado. Con un relleno de 1 a cada lado, el total es 2 y PyTorch escribe padding = 1.'],
+  ['"La convolución de la red voltea el kernel antes de multiplicar."', 'La capa calcula la correlación cruzada. El volteo de la convolución estricta no se hace, porque el kernel aprendido ya puede salir en la orientación que la pérdida pide.'],
+  ['"Más canales de salida significan más píxeles."', 'Cada canal es otro mapa, del mismo alto y ancho. Lo que crece es la profundidad: otro rasgo en cada posición. El alto y el ancho los cambian el kernel, el padding, el stride y el pooling.'],
+  ['"Si subo α, el modelo siempre aprende más rápido y mejor."', 'Una tasa enorme puede verse rápida en los primeros pasos y después salirse del valle. Hay un rango. Por encima de ese rango el entrenamiento se rompe.'],
+  ['"Batch norm ya regulariza, así que dropout sobra."', 'Batch norm acelera y estabiliza la escala de las activaciones. Dropout es el que impide que la red dependa de unas pocas neuronas. Acelerar y dejar de memorizar son trabajos distintos.']
+];
+$('#errGrid').innerHTML = errores.map((e, i) => `
+  <button type="button" class="flip text-left" aria-label="Error ${i + 1}: clic para ver la corrección" aria-pressed="false">
+    <div class="flip-inner">
+      <div class="flip-face border" style="background:#fdf2f0;border-color:#e7c6c2"><p class="text-xs uppercase tracking-wider font-semibold" style="color:#9B3A32">Error ${i + 1}</p><p class="mt-2 font-semibold">${e[0]}</p><p class="mt-auto pt-3 text-xs text-moss">Clic para ver la corrección</p></div>
+      <div class="flip-face flip-back border" style="background:#E2F0D9;border-color:#C5E0B4"><p class="text-xs uppercase tracking-wider text-inst font-semibold">Corrección</p><p class="mt-2 text-sm">${e[1]}</p></div>
+    </div>
+  </button>`).join('');
+document.querySelectorAll('.flip').forEach(c => c.addEventListener('click', () => {
+  const on = c.classList.toggle('flipped');
+  c.setAttribute('aria-pressed', on);
+}));
+
+const resumen = `RESUMEN · OPTIMIZACIÓN Y REDES CONVOLUCIONALES
+Curso: Máquinas de Aprendizaje · Mag. Solange Basualdo Najera
+
+CÓMO MIRA UNA CNN
+1) Aplanar una foto rompe la vecindad y dispara los pesos. Una foto de 1 megapíxel con 1 000 neuronas ocultas pide del orden de 1 000 millones de pesos.
+2) Tres ideas: los mismos pesos en todo lugar, mirar solo una vecindad, y apilar capas (bordes, texturas, partes, objeto).
+3) La capa convolucional desliza un kernel, multiplica, suma y agrega un sesgo. Esa cuenta es una correlación cruzada. Ejemplo 3×3 con kernel [[0,1],[2,3]]: sale [[19,25],[37,43]].
+4) Tamaño, con p = relleno por lado: piso((n + 2p − k) / s) + 1. Si p cuenta los dos lados juntos, el total es el doble de ese relleno.
+5) Parámetros = canales_salida × (canales_entrada × k × k + 1). De RGB a 64 canales con kernel 3×3: 1 792. No depende del tamaño de la foto.
+6) Pooling no tiene pesos. El máximo de una ventana 2×2 aguanta un desplazamiento chico. LeNet-5 (1998) encadena convolución, sigmoide, average pooling y tres capas densas. En la versión de 28×28, cerca de 61 700 parámetros.
+
+CÓMO SE ENTRENA
+7) α muy chica desperdicia épocas. α muy grande diverge: el paso se sale del valle.
+8) Mini-batch (32 a 256) es el estándar. Adam (β1 = 0.9, β2 = 0.999) es un punto de partida habitual: junta momentum y RMSprop. Si no alcanza, SGD con momentum y un calendario de α.
+9) L1 pone pesos en cero. L2 los encoge. Elastic Net hace las dos cosas.
+10) La sigmoide apaga el gradiente en redes hondas. ReLU + inicialización de He lo evita.
+11) Batch norm estabiliza y acelera. Dropout (p entre 0.2 y 0.5) baja el hueco entre entrenamiento y validación. Un orden habitual: conv, batch norm, activación, dropout.
+12) Para buscar hiperparámetros: de la cuadrícula y la búsqueda aleatoria a la bayesiana, Hyperband y Optuna.
+
+PARA SEGUIR
+D2L, MLP: https://d2l.ai/chapter_multilayer-perceptrons/index.html
+D2L, optimización: https://d2l.ai/chapter_optimization/index.html
+D2L, CNN: https://d2l.ai/chapter_convolutional-neural-networks/index.html
+Fashion-MNIST: https://github.com/zalandoresearch/fashion-mnist
+UCI dígitos 8×8: https://archive.ics.uci.edu/dataset/80/optical+recognition+of+handwritten+digits
+ImageNet: https://www.image-net.org/`;
+
+function toast() { const t = $('#toast'); t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2000); }
+function copiarFallback() {
+  const ta = document.createElement('textarea');
+  ta.value = resumen; ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  if (ok) toast();
+  else openModal('Copia el resumen', `<textarea class="w-full h-60 border rounded p-2 font-mono text-xs" onfocus="this.select()">${resumen.replace(/</g, '&lt;')}</textarea>`);
+}
+$('#btnCopy').addEventListener('click', () => {
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(resumen).then(toast).catch(copiarFallback);
+  else copiarFallback();
+});
+
+document.querySelectorAll('[data-load-sim]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const frame = document.getElementById(btn.dataset.loadSim);
+    if (!frame) return;
+    if (!frame.getAttribute('src')) frame.src = btn.dataset.src;
+    frame.classList.remove('hidden');
+    btn.disabled = true;
+    btn.textContent = 'Cargado';
+  });
+});
+
+renderKernelEditor();
+renderMaps();
+renderSize();
+renderParams();
+renderPool();
+optReset();
+renderCaso();
+renderQuiz();
+updateProgress();
+</script>
+</body>
+</html>
